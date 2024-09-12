@@ -1,0 +1,4 @@
+name: 'welqrate'
+datadir: 'data/welqrate/'                 # Relative to the moses_dataset.py file
+remove_h: null
+filter: False
