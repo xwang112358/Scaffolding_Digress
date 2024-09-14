@@ -1,0 +1,64 @@
+# defaults:
+#     - _self_
+#     - general : general_default
+#     - model : discrete
+#     - train : train_default
+#     - dataset : welqrate
+
+hydra:
+  job:
+    chdir: True
+  run:
+    dir: ../outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}-${general.name}
+
+general:
+  name: 'graph-tf-model'      # Warning: 'debug' and 'test' are reserved name that have a special behavior
+  wandb: 'disabled'             # online | offline | disabled
+  gpus: 1                     # Multi-gpu is not implemented on this branch
+  resume: null            # If resume, path to ckpt file from outputs directory in main directory
+  test_only: null         # Use absolute path
+  check_val_every_n_epochs: 5
+  sample_every_val: 4
+  val_check_interval: null
+  samples_to_generate: 512       # We advise to set it to 2 x batch_size maximum
+  samples_to_save: 20
+  chains_to_save: 1
+  log_every_steps: 50
+  number_chain_steps: 50        # Number of frames in each gif
+  final_model_samples_to_generate: 3
+  final_model_samples_to_save: 2
+  final_model_chains_to_save: 1
+  evaluate_all_checkpoints: False
+
+model:
+  type: 'discrete'
+  transition: 'marginal'                          # uniform or marginal
+  model: 'graph_tf'
+  diffusion_steps: 500
+  diffusion_noise_schedule: 'cosine'              # 'cosine', 'polynomial_2'
+  n_layers: 5
+  extra_features: 'all' 
+  hidden_mlp_dims: {'X': 256, 'E': 128, 'y': 128}
+  hidden_dims : {'dx': 256, 'de': 64, 'dy': 64, 'n_head': 8, 'dim_ffX': 256, 'dim_ffE': 128, 'dim_ffy': 128}
+  lambda_train: [5, 0]
+
+train:
+  n_epochs: 1
+  batch_size: 64
+  lr: 0.0002
+  clip_grad: null          # float, null to disable
+  save_model: True
+  num_workers: 0
+  ema_decay: 0           # 'Amount of EMA decay, 0 means off. A reasonable value  is 0.999.'
+  progress_bar: false
+  weight_decay: 1e-12
+  optimizer: adamw # adamw,nadamw,nadam => nadamw for large batches, see http://arxiv.org/abs/2102.06356 for the use of nesterov momentum with large batches
+  seed: 0
+
+dataset:
+  name: 'welqrate'
+  datadir: 'data/welqrate/'                 # Relative to the moses_dataset.py file
+  remove_h: null
+  filter: False
+
+

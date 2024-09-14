@@ -65,7 +65,7 @@ def get_resume_adaptive(cfg, model_kwargs):
 
 
 
-@hydra.main(version_base='1.3', config_path='../configs', config_name='config')
+@hydra.main(version_base='1.3', config_path='../configs', config_name='config_test')
 def main(cfg: DictConfig):
     dataset_config = cfg["dataset"]
 

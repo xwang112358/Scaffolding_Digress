@@ -11,6 +11,3 @@ hydra:
   run:
     dir: ../outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}-${general.name}
 
-
-
-
