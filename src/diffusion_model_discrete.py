@@ -298,6 +298,14 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         self.sampling_metrics(samples, self.name, self.current_epoch, self.val_counter, test=True, local_rank=self.local_rank)
         self.print("Done testing.")
 
+    def predict_step(self, data, i, D=10):
+        
+        pass
+
+    def on_predict_epoch_end(self) -> None:
+        # save the self.augment_samples in pt file
+        torch.save(self.augment_samples, 'augment_samples.pt')
+        
 
     def kl_prior(self, X, E, node_mask):
         """Computes the KL between q(z1 | x) and the prior p(z1) = Normal(0, 1).
