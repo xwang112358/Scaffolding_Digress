@@ -15,10 +15,10 @@ hydra:
 
 general:
   name: 'welqrate-correct-valency-12layer'      # Warning: 'debug' and 'test' are reserved name that have a special behavior
-  wandb: 'online'             # online | offline | disabled
-  gpus: [0]                     # Multi-gpu is not implemented on this branch
+  wandb: 'offline'             # online | offline | disabled
+  gpus: 1                     # Multi-gpu is not implemented on this branch
   resume: null          # If resume, path to ckpt file from outputs directory in main directory
-  test_only: null         # Use absolute path
+  test_only: '/home/allenwang/scaffold-aware/Scaffolding_Digress/checkpoints/welqrate-correct-valency-12layer/epoch=291.ckpt'         # Use absolute path
   check_val_every_n_epochs: 1
   sample_every_val: 4
   val_check_interval: null

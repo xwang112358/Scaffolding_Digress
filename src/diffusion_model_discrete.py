@@ -105,8 +105,6 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
             self.print("Found a batch with no edges. Skipping.")
             return
         dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
-        
-        # do not pass the symmetric test
         dense_data = dense_data.mask(node_mask)
         X, E = dense_data.X, dense_data.E
         noisy_data = self.apply_noise(X, E, data.y, node_mask)
@@ -298,14 +296,6 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         self.sampling_metrics(samples, self.name, self.current_epoch, self.val_counter, test=True, local_rank=self.local_rank)
         self.print("Done testing.")
 
-    def predict_step(self, data, i, D=10):
-        
-        pass
-
-    def on_predict_epoch_end(self) -> None:
-        # save the self.augment_samples in pt file
-        torch.save(self.augment_samples, 'augment_samples.pt')
-        
 
     def kl_prior(self, X, E, node_mask):
         """Computes the KL between q(z1 | x) and the prior p(z1) = Normal(0, 1).

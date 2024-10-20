@@ -175,7 +175,8 @@ class WelQrateinfos(AbstractDatasetInfos):
         self.atom_decoder = atom_decoder
         self.atom_encoder = {atom: i for i, atom in enumerate(self.atom_decoder)}
         self.atom_weights = {0: 1, 1: 12, 2: 14, 3: 16, 4: 19, 5: 28, 6: 31, 7: 32, 8: 35.4, 9: 79.9, 10: 127}
-        self.valencies = [1, 4, 3, 2, 1, 4, 5, 2, 1, 1, 1]
+#         self.valencies = [1, 4, 3, 2, 1, 4, 5, 2, 1, 1, 1]
+        self.valencies = [1,4,3,2,1,4,3, 2, 1, 1, 1]
         self.num_atom_types = len(self.atom_decoder)
         self.max_weight = 766 # to be computed
 
