@@ -206,8 +206,6 @@ class MOSESinfos(AbstractDatasetInfos):
                                      1.280680745840072632e-01, 1.445975750684738159e-01, 1.505961418151855469e-01,
                                      1.436946094036102295e-01, 9.265746921300888062e-02, 1.820066757500171661e-02,
                                      2.065089574898593128e-06])
-        
-        
         self.max_n_nodes = len(self.n_nodes) - 1 if self.n_nodes is not None else None
         self.node_types = torch.tensor([0.722338, 0.13661, 0.163655, 0.103549, 0.1421803, 0.005411, 0.00150, 0.0])
         self.edge_types = torch.tensor([0.89740, 0.0472947, 0.062670, 0.0003524, 0.0486])

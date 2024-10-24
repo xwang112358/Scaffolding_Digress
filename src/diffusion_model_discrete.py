@@ -143,7 +143,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
                       f" -- {time.time() - self.start_epoch_time:.1f}s ")
         epoch_at_metrics, epoch_bond_metrics = self.train_metrics.log_epoch_metrics()
         self.print(f"Epoch {self.current_epoch}: {epoch_at_metrics} -- {epoch_bond_metrics}")
-        print(torch.cuda.memory_summary())
+#         print(torch.cuda.memory_summary())
 
     def on_validation_epoch_start(self) -> None:
         self.val_nll.reset()
@@ -183,35 +183,35 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
             self.best_val_nll = val_nll
         self.print('Val loss: %.4f \t Best val loss:  %.4f\n' % (val_nll, self.best_val_nll))
 
-        self.val_counter += 1
-        if self.val_counter % self.cfg.general.sample_every_val == 0:
-            start = time.time()
-            samples_left_to_generate = self.cfg.general.samples_to_generate
-            samples_left_to_save = self.cfg.general.samples_to_save
-            chains_left_to_save = self.cfg.general.chains_to_save
+#         self.val_counter += 1
+#         if self.val_counter % self.cfg.general.sample_every_val == 0:
+#             start = time.time()
+#             samples_left_to_generate = self.cfg.general.samples_to_generate
+#             samples_left_to_save = self.cfg.general.samples_to_save
+#             chains_left_to_save = self.cfg.general.chains_to_save
 
-            samples = []
+#             samples = []
 
-            ident = 0
-            while samples_left_to_generate > 0:
-                bs = 2 * self.cfg.train.batch_size
-                to_generate = min(samples_left_to_generate, bs)
-                to_save = min(samples_left_to_save, bs)
-                chains_save = min(chains_left_to_save, bs)
-                samples.extend(self.sample_batch(batch_id=ident, batch_size=to_generate, num_nodes=None,
-                                                 save_final=to_save,
-                                                 keep_chain=chains_save,
-                                                 number_chain_steps=self.number_chain_steps))
-                ident += to_generate
+#             ident = 0
+#             while samples_left_to_generate > 0:
+#                 bs = 2 * self.cfg.train.batch_size
+#                 to_generate = min(samples_left_to_generate, bs)
+#                 to_save = min(samples_left_to_save, bs)
+#                 chains_save = min(chains_left_to_save, bs)
+#                 samples.extend(self.sample_batch(batch_id=ident, batch_size=to_generate, num_nodes=None,
+#                                                  save_final=to_save,
+#                                                  keep_chain=chains_save,
+#                                                  number_chain_steps=self.number_chain_steps))
+#                 ident += to_generate
 
-                samples_left_to_save -= to_save
-                samples_left_to_generate -= to_generate
-                chains_left_to_save -= chains_save
-            self.print("Computing sampling metrics...")
-            self.sampling_metrics.forward(samples, self.name, self.current_epoch, val_counter=-1, test=False,
-                                          local_rank=self.local_rank)
-            self.print(f'Done. Sampling took {time.time() - start:.2f} seconds\n')
-            print("Validation epoch end ends...")
+#                 samples_left_to_save -= to_save
+#                 samples_left_to_generate -= to_generate
+#                 chains_left_to_save -= chains_save
+#             self.print("Computing sampling metrics...")
+#             self.sampling_metrics.forward(samples, self.name, self.current_epoch, val_counter=-1, test=False,
+#                                           local_rank=self.local_rank)
+#             self.print(f'Done. Sampling took {time.time() - start:.2f} seconds\n')
+#             print("Validation epoch end ends...")
 
     def on_test_epoch_start(self) -> None:
         self.print("Starting test...")
@@ -265,6 +265,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
             to_generate = min(samples_left_to_generate, bs)
             to_save = min(samples_left_to_save, bs)
             chains_save = min(chains_left_to_save, bs)
+            # update sample_batch
             samples.extend(self.sample_batch(id, to_generate, num_nodes=None, save_final=to_save,
                                              keep_chain=chains_save, number_chain_steps=self.number_chain_steps))
             id += to_generate
@@ -278,6 +279,8 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
                 filename = f'generated_samples{i}.txt'
             else:
                 break
+        # create the file
+        
         with open(filename, 'w') as f:
             for item in samples:
                 f.write(f"N={item[0].shape[0]}\n")
@@ -531,7 +534,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
             sampled_s, discrete_sampled_s = self.sample_p_zs_given_zt(s_norm, t_norm, X, E, y, node_mask)
             X, E, y = sampled_s.X, sampled_s.E, sampled_s.y
 
-            # Save the first keep_chain graphs
+#             Save the first keep_chain graphs
             write_index = (s_int * number_chain_steps) // self.T
             chain_X[write_index] = discrete_sampled_s.X[:keep_chain]
             chain_E[write_index] = discrete_sampled_s.E[:keep_chain]
@@ -542,21 +545,21 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
 
 
-        # Prepare the chain for saving
-        if keep_chain > 0:
-            final_X_chain = X[:keep_chain]
-            final_E_chain = E[:keep_chain]
+#         # Prepare the chain for saving
+#         if keep_chain > 0:
+#             final_X_chain = X[:keep_chain]
+#             final_E_chain = E[:keep_chain]
 
-            chain_X[0] = final_X_chain                  # Overwrite last frame with the resulting X, E
-            chain_E[0] = final_E_chain
+#             chain_X[0] = final_X_chain                  # Overwrite last frame with the resulting X, E
+#             chain_E[0] = final_E_chain
 
-            chain_X = diffusion_utils.reverse_tensor(chain_X)
-            chain_E = diffusion_utils.reverse_tensor(chain_E)
+#             chain_X = diffusion_utils.reverse_tensor(chain_X)
+#             chain_E = diffusion_utils.reverse_tensor(chain_E)
 
-            # Repeat last frame to see final sample better
-            chain_X = torch.cat([chain_X, chain_X[-1:].repeat(10, 1, 1)], dim=0)
-            chain_E = torch.cat([chain_E, chain_E[-1:].repeat(10, 1, 1, 1)], dim=0)
-            assert chain_X.size(0) == (number_chain_steps + 10)
+#             # Repeat last frame to see final sample better
+#             chain_X = torch.cat([chain_X, chain_X[-1:].repeat(10, 1, 1)], dim=0)
+#             chain_E = torch.cat([chain_E, chain_E[-1:].repeat(10, 1, 1, 1)], dim=0)
+#             assert chain_X.size(0) == (number_chain_steps + 10)
 
         molecule_list = []
         for i in range(batch_size):
@@ -565,29 +568,29 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
             edge_types = E[i, :n, :n].cpu()
             molecule_list.append([atom_types, edge_types])
 
-        # Visualize chains
-        if self.visualization_tools is not None:
-            self.print('Visualizing chains...')
-            current_path = os.getcwd()
-            num_molecules = chain_X.size(1)       # number of molecules
-            for i in range(num_molecules):
-                result_path = os.path.join(current_path, f'chains/{self.cfg.general.name}/'
-                                                         f'epoch{self.current_epoch}/'
-                                                         f'chains/molecule_{batch_id + i}')
-                if not os.path.exists(result_path):
-                    os.makedirs(result_path)
-                    _ = self.visualization_tools.visualize_chain(result_path,
-                                                                 chain_X[:, i, :].numpy(),
-                                                                 chain_E[:, i, :].numpy())
-                self.print('\r{}/{} complete'.format(i+1, num_molecules), end='', flush=True)
-            self.print('\nVisualizing molecules...')
+#         # Visualize chains
+#         if self.visualization_tools is not None:
+#             self.print('Visualizing chains...')
+#             current_path = os.getcwd()
+#             num_molecules = chain_X.size(1)       # number of molecules
+#             for i in range(num_molecules):
+#                 result_path = os.path.join(current_path, f'chains/{self.cfg.general.name}/'
+#                                                          f'epoch{self.current_epoch}/'
+#                                                          f'chains/molecule_{batch_id + i}')
+#                 if not os.path.exists(result_path):
+#                     os.makedirs(result_path)
+#                     _ = self.visualization_tools.visualize_chain(result_path,
+#                                                                  chain_X[:, i, :].numpy(),
+#                                                                  chain_E[:, i, :].numpy())
+#                 self.print('\r{}/{} complete'.format(i+1, num_molecules), end='', flush=True)
+#             self.print('\nVisualizing molecules...')
 
-            # Visualize the final molecules
-            current_path = os.getcwd()
-            result_path = os.path.join(current_path,
-                                       f'graphs/{self.name}/epoch{self.current_epoch}_b{batch_id}/')
-            self.visualization_tools.visualize(result_path, molecule_list, save_final)
-            self.print("Done.")
+#             # Visualize the final molecules
+#             current_path = os.getcwd()
+#             result_path = os.path.join(current_path,
+#                                        f'graphs/{self.name}/epoch{self.current_epoch}_b{batch_id}/')
+#             self.visualization_tools.visualize(result_path, molecule_list, save_final)
+#             self.print("Done.")
 
         return molecule_list
 

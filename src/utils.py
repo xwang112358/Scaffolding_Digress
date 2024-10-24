@@ -127,12 +127,7 @@ class PlaceHolder:
         else:
             self.X = self.X * x_mask
             self.E = self.E * e_mask1 * e_mask2
-            # print("Shape of self.E:", self.E.shape)
-            # try:
             assert torch.allclose(self.E, torch.transpose(self.E, 1, 2))
-            # except AssertionError:
-            #     print("Assertion error in mask")
-
         return self
 
 
