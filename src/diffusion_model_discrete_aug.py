@@ -17,7 +17,7 @@ from src import utils
 
 class DiscreteDenoisingDiffusion(pl.LightningModule):
     def __init__(self, cfg, dataset_infos, train_metrics, sampling_metrics, visualization_tools, extra_features,
-                 domain_features):
+                 domain_features, augment = False, aug_steps = 10):
         super().__init__()
 
         input_dims = dataset_infos.input_dims
@@ -29,6 +29,11 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         self.model_dtype = torch.float32
         self.T = cfg.model.diffusion_steps
         self.test_mode = cfg.general.test_mode
+        
+        # augmentation
+        self.augment = augment
+        self.aug_steps = aug_steps
+        self.augment_samples = []
 
         self.Xdim = input_dims['X']
         self.Edim = input_dims['E']
@@ -238,7 +243,38 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         
         # create a list of sum of node mask in dim 0
         n_nodes = node_mask.sum(1)
-
+        X, E = dense_data.X, dense_data.E
+        # print('X, E', X.shape, E.shape)
+        # check apply noise
+        noisy_data = self.apply_noise(X, E, data.y, node_mask)
+        
+        X, E, y = noisy_data['X_t'], noisy_data['E_t'], noisy_data['y_t']
+        assert (E == torch.transpose(E, 1, 2)).all()
+        
+        for s_int in reversed(range(0, 100)): # can set to a higher value to increase validity
+            s_array = s_int * torch.ones((X.shape[0], 1)).type_as(y)
+            t_array = s_array + 1
+            s_norm = s_array / self.T
+            t_norm = t_array / self.T
+            
+            sampled_s, discrete_sampled_s = self.sample_p_zs_given_zt(s_norm, t_norm, X, E, y, node_mask)
+            X, E, y = sampled_s.X, sampled_s.E, sampled_s.y
+            
+        sampled_s = sampled_s.mask(node_mask, collapse=True)
+        X, E, y = sampled_s.X, sampled_s.E, sampled_s.y
+        
+        molecule_list = []
+        
+        for i in range(X.shape[0]):
+            n = n_nodes[i]
+            atom_types = X[i, :n].cpu()
+            edge_types = E[i, :n, :n].cpu()
+            molecule_list.append([atom_types, edge_types])
+            
+        self.augment_samples.extend(molecule_list)
+        
+        
+    
     def on_test_epoch_end(self) -> None:
         
         """ Measure likelihood on a test set and compute stability metrics. """
@@ -260,42 +296,16 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
         self.print(f'Test loss: {test_nll :.4f}')
         
-        if self.test_mode == 'augment':
-            print('skpping sampling from the noise') 
-            
-        else:
-
-            samples_left_to_generate = self.cfg.general.final_model_samples_to_generate
-            samples_left_to_save = self.cfg.general.final_model_samples_to_save
-            chains_left_to_save = self.cfg.general.final_model_chains_to_save
-
-            samples = []
-            id = 0
-            while samples_left_to_generate > 0:
-                self.print(f'Samples left to generate: {samples_left_to_generate}/'
-                        f'{self.cfg.general.final_model_samples_to_generate}', end='', flush=True)
-                bs = 2 * self.cfg.train.batch_size
-                to_generate = min(samples_left_to_generate, bs)
-                to_save = min(samples_left_to_save, bs)
-                chains_save = min(chains_left_to_save, bs)
-                # update sample_batch
-                samples.extend(self.sample_batch(id, to_generate, num_nodes=None, save_final=to_save,
-                                                keep_chain=chains_save, number_chain_steps=self.number_chain_steps))
-                id += to_generate
-                samples_left_to_save -= to_save
-                samples_left_to_generate -= to_generate
-                chains_left_to_save -= chains_save
-            self.print("Saving the generated graphs")
-            filename = f'generated_samples1.txt'
-            for i in range(2, 10):
-                if os.path.exists(filename):
-                    filename = f'generated_samples{i}.txt'
+        if self.augment:
+            self.print('saving the augmented samples') 
+            file_name = f'augmented_samples1.txt'
+            for i in range(2,10):
+                if os.path.exists(file_name):
+                    file_name = f'augmented_samples{i}.txt'
                 else:
                     break
-            # create the file
-            
-            with open(filename, 'w') as f:
-                for item in samples:
+            with open(file_name, 'w') as f:
+                for item in self.augment_samples:
                     f.write(f"N={item[0].shape[0]}\n")
                     atoms = item[0].tolist()
                     f.write("X: \n")
@@ -308,9 +318,59 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
                             f.write(f"{bond} ")
                         f.write("\n")
                     f.write("\n")
-            self.print("Generated graphs Saved. Computing sampling metrics...")
-            self.sampling_metrics(samples, self.name, self.current_epoch, self.val_counter, test=True, local_rank=self.local_rank)
-            self.print("Done testing.")
+            self.print("Augmented graphs Saved. Computing sampling metrics...")
+            self.sampling_metrics(self.augment_samples, self.name, self.current_epoch, self.val_counter, test=True, local_rank=self.local_rank)
+            self.print("Done Augmenting.")
+            
+        else:
+            self.print("skpping the original sampling from the noise")
+
+    #         samples_left_to_generate = self.cfg.general.final_model_samples_to_generate
+    #         samples_left_to_save = self.cfg.general.final_model_samples_to_save
+    #         chains_left_to_save = self.cfg.general.final_model_chains_to_save
+
+    #         samples = []
+    #         id = 0
+    #         while samples_left_to_generate > 0:
+    #             self.print(f'Samples left to generate: {samples_left_to_generate}/'
+    #                     f'{self.cfg.general.final_model_samples_to_generate}', end='', flush=True)
+    #             bs = 2 * self.cfg.train.batch_size
+    #             to_generate = min(samples_left_to_generate, bs)
+    #             to_save = min(samples_left_to_save, bs)
+    #             chains_save = min(chains_left_to_save, bs)
+    #             # update sample_batch
+    #             samples.extend(self.sample_batch(id, to_generate, num_nodes=None, save_final=to_save,
+    #                                             keep_chain=chains_save, number_chain_steps=self.number_chain_steps))
+    #             id += to_generate
+    #             samples_left_to_save -= to_save
+    #             samples_left_to_generate -= to_generate
+    #             chains_left_to_save -= chains_save
+    #         self.print("Saving the generated graphs")
+    #         filename = f'generated_samples1.txt'
+    #         for i in range(2, 10):
+    #             if os.path.exists(filename):
+    #                 filename = f'generated_samples{i}.txt'
+    #             else:
+    #                 break
+    #         # create the file
+            
+    #         with open(filename, 'w') as f:
+    #             for item in samples:
+    #                 f.write(f"N={item[0].shape[0]}\n")
+    #                 atoms = item[0].tolist()
+    #                 f.write("X: \n")
+    #                 for at in atoms:
+    #                     f.write(f"{at} ")
+    #                 f.write("\n")
+    #                 f.write("E: \n")
+    #                 for bond_list in item[1]:
+    #                     for bond in bond_list:
+    #                         f.write(f"{bond} ")
+    #                     f.write("\n")
+    #                 f.write("\n")
+    #         self.print("Generated graphs Saved. Computing sampling metrics...")
+    #         self.sampling_metrics(samples, self.name, self.current_epoch, self.val_counter, test=True, local_rank=self.local_rank)
+    #         self.print("Done testing.")
 
 
     def kl_prior(self, X, E, node_mask):
@@ -420,14 +480,22 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
     def apply_noise(self, X, E, y, node_mask):
         """ Sample noise and apply it to the data. """
 
-        # Sample a timestep t.
-        # When evaluating, the loss for t=0 is computed separately
-        lowest_t = 0 if self.training else 1
-        t_int = torch.randint(lowest_t, self.T + 1, size=(X.size(0), 1), device=X.device).float()  # (bs, 1)
-        s_int = t_int - 1
+        if self.augment:
+            t_int = self.aug_steps * torch.ones(X.size(0), 1, device = X.device).float()
+            s_int = t_int - 1
+            t_float = t_int / self.aug_steps
+            s_float = s_int / self.aug_steps
+        
+        else:
+            
+            # Sample a timestep t.
+            # When evaluating, the loss for t=0 is computed separately
+            lowest_t = 0 if self.training else 1
+            t_int = torch.randint(lowest_t, self.T + 1, size=(X.size(0), 1), device=X.device).float()  # (bs, 1)
+            s_int = t_int - 1
 
-        t_float = t_int / self.T
-        s_float = s_int / self.T
+            t_float = t_int / self.T
+            s_float = s_int / self.T
 
         # beta_t and alpha_s_bar are used for denoising/loss computation
         beta_t = self.noise_schedule(t_normalized=t_float)                         # (bs, 1)

@@ -15,57 +15,14 @@ from src import utils
 from metrics.abstract_metrics import TrainAbstractMetricsDiscrete, TrainAbstractMetrics
 
 from diffusion_model import LiftedDenoisingDiffusion
-from diffusion_model_discrete import DiscreteDenoisingDiffusion
+from diffusion_model_discrete_aug import DiscreteDenoisingDiffusion
 from diffusion.extra_features import DummyExtraFeatures, ExtraFeatures
 
 
 warnings.filterwarnings("ignore", category=PossibleUserWarning)
 
 
-# def get_resume(cfg, model_kwargs):
-#     """ Resumes a run. It loads previous config without allowing to update keys (used for testing). """
-#     saved_cfg = cfg.copy()
-#     name = cfg.general.name + '_resume'
-#     resume = cfg.general.test_only
-#     if cfg.model.type == 'discrete':
-#         model = DiscreteDenoisingDiffusion.load_from_checkpoint(resume, **model_kwargs)
-#     else:
-#         model = LiftedDenoisingDiffusion.load_from_checkpoint(resume, **model_kwargs)
-#     cfg = model.cfg
-#     cfg.general.test_only = resume
-#     cfg.general.name = name
-#     cfg = utils.update_config_with_new_keys(cfg, saved_cfg)
-#     return cfg, model
-
-
-# def get_resume_adaptive(cfg, model_kwargs):
-#     """ Resumes a run. It loads previous config but allows to make some changes (used for resuming training)."""
-#     saved_cfg = cfg.copy()
-#     # Fetch path to this file to get base path
-#     current_path = os.path.dirname(os.path.realpath(__file__))
-#     root_dir = current_path.split('outputs')[0]
-
-#     resume_path = os.path.join(root_dir, cfg.general.resume)
-
-#     if cfg.model.type == 'discrete':
-#         model = DiscreteDenoisingDiffusion.load_from_checkpoint(resume_path, **model_kwargs)
-#     else:
-#         model = LiftedDenoisingDiffusion.load_from_checkpoint(resume_path, **model_kwargs)
-#     new_cfg = model.cfg
-
-#     for category in cfg:
-#         for arg in cfg[category]:
-#             new_cfg[category][arg] = cfg[category][arg]
-
-#     new_cfg.general.resume = resume_path
-#     new_cfg.general.name = new_cfg.general.name + '_resume'
-
-#     new_cfg = utils.update_config_with_new_keys(new_cfg, saved_cfg)
-#     return new_cfg, model
-
-
-
-@hydra.main(version_base='1.3', config_path='../configs', config_name='QM9')
+@hydra.main(version_base='1.3', config_path='../configs', config_name='QM9_aug')
 def main(cfg: DictConfig):
     dataset_config = cfg["dataset"]
     print(cfg)
@@ -102,7 +59,6 @@ def main(cfg: DictConfig):
             
         else:
             raise ValueError("Dataset not implemented")
-
             
         if cfg.model.type == 'discrete' and cfg.model.extra_features is not None:
             extra_features = ExtraFeatures(cfg.model.extra_features, dataset_info=dataset_infos)
@@ -130,8 +86,11 @@ def main(cfg: DictConfig):
 
     utils.create_folders(cfg)
 
-    if cfg.model.type == 'discrete':
+    if cfg.model.type == 'discrete' and cfg.general.setting != 'augment':
         model = DiscreteDenoisingDiffusion(cfg=cfg, **model_kwargs)
+    elif cfg.model.type == 'discrete' and cfg.general.setting == 'augment':
+        print(111111111111111111111111111)
+        model = DiscreteDenoisingDiffusion(cfg=cfg, **model_kwargs, augment=True, aug_steps=5)
 
     callbacks = []
     if cfg.train.save_model:
@@ -158,7 +117,7 @@ def main(cfg: DictConfig):
                       max_epochs=cfg.train.n_epochs,
                       check_val_every_n_epoch=cfg.general.check_val_every_n_epochs,
                       fast_dev_run=cfg.general.name == 'debug',
-                      enable_progress_bar=False,
+                      enable_progress_bar=True,
                       callbacks=callbacks,
                       log_every_n_steps=50,
                       logger = [])
@@ -169,28 +128,9 @@ def main(cfg: DictConfig):
     elif cfg.general.setting == 'train_continue':
         trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.general.resume)
 
-    elif cfg.general.setting == 'test':
+    elif cfg.general.setting in ['test', 'augment']:
         trainer.test(model, datamodule=datamodule, ckpt_path=cfg.general.ckpt_path)
 
-    
-#     if not cfg.general.test_only:
-#         trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.general.resume)
-#         if cfg.general.name not in ['debug', 'test']:
-#             trainer.test(model, datamodule=datamodule)
-#     else:
-#         # Start by evaluating test_only_path
-#         trainer.test(model, datamodule=datamodule, ckpt_path=cfg.general.test_only)
-#         if cfg.general.evaluate_all_checkpoints:
-#             directory = pathlib.Path(cfg.general.test_only).parents[0]
-#             print("Directory:", directory)
-#             files_list = os.listdir(directory)
-#             for file in files_list:
-#                 if '.ckpt' in file:
-#                     ckpt_path = os.path.join(directory, file)
-#                     if ckpt_path == cfg.general.test_only:
-#                         continue
-#                     print("Loading checkpoint", ckpt_path)
-#                     trainer.test(model, datamodule=datamodule, ckpt_path=ckpt_path)
 
 
 if __name__ == '__main__':
