@@ -6,8 +6,8 @@ general:
     test_only: null
     evaluate_all_checkpoints: False
 train:
-    n_epochs: 100
-    batch_size: 128
+    n_epochs: 5
+    batch_size: 1024
     save_model: True
 model:
     n_layers: 9

@@ -65,7 +65,7 @@ warnings.filterwarnings("ignore", category=PossibleUserWarning)
 
 
 
-@hydra.main(version_base='1.3', config_path='../configs', config_name='config')
+@hydra.main(version_base='1.3', config_path='../configs', config_name='QM9')
 def main(cfg: DictConfig):
     dataset_config = cfg["dataset"]
     print(cfg)
@@ -163,7 +163,7 @@ def main(cfg: DictConfig):
                       log_every_n_steps=50,
                       logger = [])
 
-    if cfg.general.setting == 'train_scracth':
+    if cfg.general.setting == 'train_scratch':
         trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.general.resume) # resume: null
 
     elif cfg.general.setting == 'train_continue':

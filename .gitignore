@@ -8,6 +8,7 @@ __pycache__/
 
 # checkpoints
 checkpoints/
+augment_qm9
 
 # Distribution / packaging
 .Python
