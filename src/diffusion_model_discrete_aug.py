@@ -17,7 +17,7 @@ from src import utils
 
 class DiscreteDenoisingDiffusion(pl.LightningModule):
     def __init__(self, cfg, dataset_infos, train_metrics, sampling_metrics, visualization_tools, extra_features,
-                 domain_features, augment = False, aug_steps = 10):
+                 domain_features, augment = False, max_aug_steps = 10):
         super().__init__()
 
         input_dims = dataset_infos.input_dims
@@ -32,7 +32,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         
         # augmentation
         self.augment = augment
-        self.aug_steps = aug_steps
+        self.max_aug_steps = max_aug_steps
         self.augment_samples = []
 
         self.Xdim = input_dims['X']
@@ -251,7 +251,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         X, E, y = noisy_data['X_t'], noisy_data['E_t'], noisy_data['y_t']
         assert (E == torch.transpose(E, 1, 2)).all()
         
-        for s_int in reversed(range(0, 100)): # can set to a higher value to increase validity
+        for s_int in reversed(range(0, self.cfg.augment_data.revserse_steps)): # can set to a higher value to increase validity
             s_array = s_int * torch.ones((X.shape[0], 1)).type_as(y)
             t_array = s_array + 1
             s_norm = s_array / self.T
@@ -481,10 +481,13 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         """ Sample noise and apply it to the data. """
 
         if self.augment:
-            t_int = self.aug_steps * torch.ones(X.size(0), 1, device = X.device).float()
+            # uniformly sample aug_steps (1, max_aug_steps)
+            aug_steps = torch.randint(1, self.max_aug_steps + 1, size=(1,)).item()
+            
+            t_int = aug_steps * torch.ones(X.size(0), 1, device = X.device).float()
             s_int = t_int - 1
-            t_float = t_int / self.aug_steps
-            s_float = s_int / self.aug_steps
+            t_float = t_int / aug_steps
+            s_float = s_int / aug_steps
         
         else:
             

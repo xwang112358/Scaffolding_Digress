@@ -141,6 +141,7 @@ data/
 egnn/__pycache__/
 equivariant_diffusion/__pycache__/
 outputs/
+TDC_Dataset/
 archives/qm9/__pycache__/
 archives/qm9/data_utils/__pycache__/
 archives/qm9/data_utils/prepare/__pycache__/
