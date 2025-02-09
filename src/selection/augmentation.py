@@ -16,7 +16,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 from src import utils
-from src.analysis.rdkit_functions import build_molecule_with_partial_charges, mol2smiles
+from src.analysis.rdkit_functions import build_molecule_with_partial_charges, mol2smiles, build_molecule
+
+# Add this line at the top of the file with other imports
+__all__ = ['AugmentationDatasetSelector', 'SMILESRoundTripChecker', 'AugmentationDataset']
 
 # def get_dataset(args, load_path, load_unlabeled_name="None"):
 #     if load_unlabeled_name=='None':
@@ -48,6 +51,7 @@ class AugmentationDatasetSelector:
         self.cluster_ids = None
 
     def scaffold_clustering(self, cutoff):
+        print('extracting scaffolds')
         scaff_mols = [Chem.MolFromSmiles(scaffold) for scaffold in self.scaff_list]
         ecfps = []
         for mol in scaff_mols:
@@ -58,6 +62,7 @@ class AugmentationDatasetSelector:
             except Exception as e:
                 raise ValueError(f'Error generating Morgan fingerprint: {e}')
         
+        print('calculating distance matrix')
         dists = calc_distance_matrix(ecfps)
         clusters = Butina.ClusterData(dists, len(ecfps), cutoff, isDistData=True)
         self.cluster_ids = [0] * len(ecfps)
@@ -120,14 +125,15 @@ class AugmentationDatasetSelector:
 
         print('Check Sum of all probabilities across all molecules:', sum(sampling_probs))
 
-        sampled_indices = np.random.choice(num_molecules, size=N, replace=False, p=sampling_probs)
-        
+        sampled_indices = np.random.choice(num_molecules, size=N, replace=True, p=sampling_probs)
         
         selected_smiles = [self.smiles_list[idx] for idx in sampled_indices]
         selected_labels = [self.y_list[idx] for idx in sampled_indices]
-
-        selected_data = pd.DataFrame({'smiles': selected_smiles, 'y': selected_labels})
-        selected_data.to_csv(os.path.join(self.root, self.name, f'{self.name}_selected_train_data.csv'), index=False)
+        selected_scaffolds = [self.scaff_list[idx] for idx in sampled_indices]
+        selected_data = pd.DataFrame({'smiles': selected_smiles, 'scaffold': selected_scaffolds, 'y': selected_labels})
+        # create directory
+        
+        # selected_data.to_csv(os.path.join(self.root, self.name, f'{self.name}_selected_train_data.csv'), index=False)
         
         return selected_data
     
@@ -140,14 +146,19 @@ atom_decoder = ['H', 'C', 'N', 'O', 'F', 'Si', 'P', 'S', 'Cl', 'Br', 'I']
 
 
 class AugmentationDataset(InMemoryDataset):
-    def __init__(self, name, root, smiles_list, filter_dataset = False, transform=None, pre_transform=None):
+    def __init__(self, cfg, smiles_list, label_list, filter_dataset = False, transform=None, pre_transform=None):
+        name = cfg.augment_data.name
+        root = cfg.augment_data.data_dir
+        self.split_scheme = cfg.augment_data.split
+        self.ratio = cfg.augment_data.ratio
+        self.new_label_list = []
         self.name = '_'.join(name.split('-'))
         self.root = root
         self.smiles_list = smiles_list
+        self.label_list = label_list
         self.total_data_len = len(smiles_list)
         self.filter_dataset = filter_dataset
         self.atom_decoder = atom_decoder
-        self.scaff_list = [_generate_scaffold(smi) for smi in smiles_list]
     
         super(AugmentationDataset, self).__init__(root, transform, pre_transform)
         
@@ -159,7 +170,7 @@ class AugmentationDataset(InMemoryDataset):
         
     @property
     def processed_file_names(self):
-        return [f'{self.name}_selected_data.pt']
+        return [f'{self.name}_{self.split_scheme}_{self.ratio}_selected_data.pt']
 
     def process(self):
         # define atom_decoder later
@@ -171,14 +182,22 @@ class AugmentationDataset(InMemoryDataset):
         for i, smile in enumerate(tqdm(self.smiles_list)):
             invalid = False
             mol = Chem.MolFromSmiles(smile)
+
+            if mol is None:
+                smile = smiles_cleaner(smile)
+                mol = Chem.MolFromSmiles(smile) 
+
             scaffold = MurckoScaffold.GetScaffoldForMol(mol)
             if scaffold is None:
                 raise ValueError(f"Cannot retrieve scaffold for {smile}")
 
             scaffold_indices = mol.GetSubstructMatch(scaffold)
             if not scaffold_indices:
-                raise ValueError(f"Cannot find matched substructure in {smile}")
-            
+                print(f"Cannot find matched substructure in {smile}")
+                N = mol.GetNumAtoms()
+                scaffold_indices = [i for i in range(N)]
+                # raise ValueError(f"Cannot find matched substructure in {smile}")
+                
             N = mol.GetNumAtoms()
             type_idx = []
             for atom in mol.GetAtoms():
@@ -188,7 +207,7 @@ class AugmentationDataset(InMemoryDataset):
                     print(f"Atom {atom.GetSymbol()} not in atom_decoder, skipping molecule")
                     invalid = True
             if invalid:
-                raise ValueError(f"Cannot convert {smile} to the molecular graph")
+                continue
             
             # scaffold node mask
             node_mask = torch.zeros(N, dtype=torch.bool)
@@ -202,11 +221,6 @@ class AugmentationDataset(InMemoryDataset):
                 row += [start, end]
                 col += [end, start]
                 edge_type += 2 * [bonds[bond.GetBondType()] + 1]
-                
-                # scaffold edge mask
-                is_scaffold_edge = node_mask[start] and node_mask[end]
-                # edge_mask += 2 * [is_scaffold_edge]
-
                 
             if len(row) == 0:
                 print("No bonds found, skipping molecule")
@@ -224,33 +238,18 @@ class AugmentationDataset(InMemoryDataset):
 
             x = F.one_hot(torch.tensor(type_idx), num_classes=len(types)).float()
             y = torch.zeros(size=(1, 0), dtype=torch.float)
+            self.new_label_list.append(self.label_list[i])
+            
             data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y, idx=i, 
                         node_mask=node_mask)
             
-            # if self.filter_dataset:
-            #     dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
-            #     dense_data = dense_data.mask(node_mask, collapse=True)
-            #     X, E = dense_data.X, dense_data.E
-            #     assert X.size(0) == 1
-            #     atom_types = X[0]
-            #     edge_types = E[0]
-            #     mol = build_molecule_with_partial_charges(atom_types, edge_types, atom_decoder)
-            #     smiles = mol2smiles(mol)
-            #     if smiles is not None:
-            #         try:
-            #             mol_frags = Chem.rdmolops.GetMolFrags(mol, asMols=True, sanitizeFrags=True)
-            #             if len(mol_frags) == 1:
-            #                 data_list.append(data)
-            #                 smiles_kept.append(smiles)
-            #         except Chem.rdchem.AtomValenceException:
-            #             print("Valence error in GetmolFrags")
-            #         except Chem.rdchem.KekulizeException:
-            #             print("Can't kekulize molecule")
-            # else:
+            smiles_kept.append(smile)
             data_list.append(data)
-                
-            torch.save(self.collate(data_list), self.processed_paths[0])
-            
+            # save the kept smiles
+        torch.save(smiles_kept, os.path.join(self.root, self.name, f'{self.name}_{self.split_scheme}_{self.ratio}_selected_filtered_smiles.pt'))
+
+        torch.save(self.collate(data_list), self.processed_paths[0])
+    
             # if self.filter_dataset:
             #     smiles_save_path = os.path.join(self.root, self.name, f'{self.name}_selected_augment.smiles') 
             #     print(smiles_save_path)
@@ -258,11 +257,138 @@ class AugmentationDataset(InMemoryDataset):
             #         f.writelines('%s\n' % s for s in smiles_kept)
                     
             #     print(f"Number of molecules kept: {len(smiles_kept)} / {len(self.smiles_list)}")
-                    
-                        
-                        
-                    
+    def get_label_list(self):
+        return self.new_label_list
+
+           
+# class SMILESRoundTripChecker:
+#     def __init__(self, smiles_list, atom_decoder=atom_decoder):
+#         self.smiles_list = smiles_list
+#         self.atom_decoder = atom_decoder
+#         self.valid_smiles = []
+#         self.invalid_smiles = []
+#         self.conversion_errors = []
+        
+#     def check_round_trip(self):
+#         """Check SMILES that can successfully round-trip through molecular graph conversion"""
+#         types = {atom: i for i, atom in enumerate(self.atom_decoder)}
+#         bonds = {BT.SINGLE: 0, BT.DOUBLE: 1, BT.TRIPLE: 2, BT.AROMATIC: 3}
+        
+#         for smile in tqdm(self.smiles_list, desc="Checking SMILES round-trip conversion"):
+#             error_info = {'smiles': smile, 'error': None, 'stage': None}
             
+#             try:
+#                 # 1. Initial SMILES to Mol conversion
+#                 print('converting mol to molecular graph...')
+#                 mol = Chem.MolFromSmiles(smile,)
+#                 if mol is None:
+#                     smile = smiles_cleaner(smile)
+#                     mol = Chem.MolFromSmiles(smile)
+#                     if mol is None:
+#                         error_info['error'] = 'Invalid SMILES'
+#                         error_info['stage'] = 'initial_conversion'
+#                         self.conversion_errors.append(error_info)
+#                         self.invalid_smiles.append(smile)
+#                         continue
+                
+#                 # 2. Convert to molecular graph representation
+#                 N = mol.GetNumAtoms()
+#                 type_idx = []
+#                 for atom in mol.GetAtoms():
+#                     if atom.GetSymbol() not in types:
+#                         error_info['error'] = f'Unknown atom type: {atom.GetSymbol()}'
+#                         error_info['stage'] = 'atom_type_check'
+#                         self.conversion_errors.append(error_info)
+#                         self.invalid_smiles.append(smile)
+#                         continue
+#                     type_idx.append(types[atom.GetSymbol()])
+                
+#                 row, col, edge_type = [], [], []
+#                 for bond in mol.GetBonds():
+#                     start, end = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+#                     row += [start, end]
+#                     col += [end, start]
+#                     edge_type += 2 * [bonds[bond.GetBondType()] + 1]
+                
+#                 if len(row) == 0:
+#                     error_info['error'] = 'No bonds found'
+#                     error_info['stage'] = 'bond_processing'
+#                     self.conversion_errors.append(error_info)
+#                     self.invalid_smiles.append(smile)
+#                     continue
+                
+#                 # 3. Create PyG Data object
+#                 edge_index = torch.tensor([row, col], dtype=torch.long)
+#                 edge_type = torch.tensor(edge_type, dtype=torch.long)
+#                 edge_attr = F.one_hot(edge_type, num_classes=len(bonds) + 1).to(torch.float)
+#                 x = F.one_hot(torch.tensor(type_idx), num_classes=len(types)).float()
+#                 data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
+                
+#                 # 4. Convert to dense representation
+#                 dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, None)
+#                 dense_data = dense_data.mask(node_mask, collapse=True)
+#                 X, E = dense_data.X, dense_data.E
+                
+#                 # 5. Try to rebuild molecule
+#                 print('rebuilding molecule...')
+#                 rebuilt_mol = build_molecule(X[0], E[0], self.atom_decoder)
+#                 rebuilt_smiles = mol2smiles(rebuilt_mol)
+                
+#                 if rebuilt_smiles is None:
+#                     error_info['error'] = 'Failed to convert rebuilt molecule to SMILES'
+#                     error_info['stage'] = 'final_conversion'
+#                     self.conversion_errors.append(error_info)
+#                     self.invalid_smiles.append(smile)
+#                 else:
+#                     self.valid_smiles.append(smile)
+                    
+#             except Exception as e:
+#                 error_info['error'] = str(e)
+#                 error_info['stage'] = 'unexpected_error'
+#                 self.conversion_errors.append(error_info)
+#                 self.invalid_smiles.append(smile)
+                
+#         print(f"\nResults:")
+#         print(f"Total SMILES processed: {len(self.smiles_list)}")
+#         print(f"Valid conversions: {len(self.valid_smiles)}")
+#         print(f"Invalid conversions: {len(self.invalid_smiles)}")
+        
+#         return self.valid_smiles, self.invalid_smiles, self.conversion_errors
+    
+#     def save_results(self, save_dir):
+#         """Save the results to files"""
+#         os.makedirs(save_dir, exist_ok=True)
+        
+#         # Save valid SMILES
+#         with open(os.path.join(save_dir, 'valid_smiles.txt'), 'w') as f:
+#             f.writelines('%s\n' % s for s in self.valid_smiles)
+            
+#         # Save invalid SMILES
+#         with open(os.path.join(save_dir, 'invalid_smiles.txt'), 'w') as f:
+#             f.writelines('%s\n' % s for s in self.invalid_smiles)
+            
+#         # Save detailed error information
+#         df = pd.DataFrame(self.conversion_errors)
+#         df.to_csv(os.path.join(save_dir, 'conversion_errors.csv'), index=False)
+        
+#         print(f"\nResults saved to: {save_dir}")
+
+
+
+                        
+pattern_dict = {'[NH-]': '[N-]', '[OH2+]':'[O]'}                 
+def smiles_cleaner(smiles):
+    '''
+    This function is to clean smiles for some known issues that makes
+    rdkit:Chem.MolFromSmiles not working
+    '''
+    print('fixing smiles for rdkit...')
+    new_smiles = smiles
+    for pattern, replace_value in pattern_dict.items():
+        if pattern in smiles:
+            print('found pattern and fixed the smiles!')
+            new_smiles = smiles.replace(pattern, replace_value)
+    return new_smiles         
             
 
 

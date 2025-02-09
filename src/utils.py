@@ -61,6 +61,22 @@ def to_dense(x, edge_index, edge_attr, batch):
 
     return PlaceHolder(X=X, E=E, y=None), node_mask
 
+def to_dense_scaffold(x, edge_index, edge_attr, batch, scaffold_mask=None):
+    X, node_mask = to_dense_batch(x=x, batch=batch)
+    # node_mask = node_mask.float()
+    edge_index, edge_attr = torch_geometric.utils.remove_self_loops(edge_index, edge_attr)
+    # TODO: carefully check if setting node_mask as a bool breaks the continuous case
+    max_num_nodes = X.size(1)
+    E = to_dense_adj(edge_index=edge_index, batch=batch, edge_attr=edge_attr, max_num_nodes=max_num_nodes)
+    E = encode_no_edge(E)
+
+    if scaffold_mask is not None:
+        dense_scaffold_mask,_ = to_dense_batch(x=scaffold_mask, batch=batch)
+    else:
+        dense_scaffold_mask = None
+
+    return PlaceHolder(X=X, E=E, y=None), node_mask, dense_scaffold_mask
+
 
 def encode_no_edge(E):
     assert len(E.shape) == 4

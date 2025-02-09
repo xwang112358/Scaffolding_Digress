@@ -2,7 +2,7 @@
 import os
 import pathlib
 import warnings
-
+import time
 import torch
 from torch_geometric.loader import DataLoader
 torch.cuda.empty_cache()
@@ -11,15 +11,14 @@ from omegaconf import DictConfig
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.warnings import PossibleUserWarning
+import pandas as pd
 
 from src import utils
 from metrics.abstract_metrics import TrainAbstractMetricsDiscrete, TrainAbstractMetrics
 
-from diffusion_model import LiftedDenoisingDiffusion
-from diffusion_model_discrete_aug import DiscreteDenoisingDiffusion
+from src.diffusion_model_discrete_scaffold import DiscreteDenoisingDiffusion
 from diffusion.extra_features import DummyExtraFeatures, ExtraFeatures
-from selection.augmentation import AugmentationDatasetSelector, AugmentationDataset
-from selection.get_tdc_dataset import get_tdc_dataset
+from selection.augmentation import AugmentationDataset
 
 warnings.filterwarnings("ignore", category=PossibleUserWarning)
 
@@ -35,30 +34,12 @@ def main(cfg: DictConfig):
         from diffusion.extra_features_molecular import ExtraMolecularFeatures
         from analysis.visualization import MolecularVisualization
 
-        if dataset_config["name"] == 'qm9':
-            from datasets import qm9_dataset
-            datamodule = qm9_dataset.QM9DataModule(cfg)
-            dataset_infos = qm9_dataset.QM9infos(datamodule=datamodule, cfg=cfg)
-            train_smiles = qm9_dataset.get_train_smiles(cfg=cfg, train_dataloader=datamodule.train_dataloader(),
-                                                        dataset_infos=dataset_infos, evaluate_dataset=False)
-        elif dataset_config['name'] == 'guacamol':
-            from datasets import guacamol_dataset
-            datamodule = guacamol_dataset.GuacamolDataModule(cfg)
-            dataset_infos = guacamol_dataset.Guacamolinfos(datamodule, cfg)
-            train_smiles = None
-
-        elif dataset_config.name == 'moses':
-            from datasets import moses_dataset
-            datamodule = moses_dataset.MosesDataModule(cfg)
-            dataset_infos = moses_dataset.MOSESinfos(datamodule, cfg)
-            train_smiles = None
-        elif dataset_config.name == 'welqrate':
+        if dataset_config.name == 'welqrate':
             print("Loading welqrate dataset")
             from datasets import welqrate_dataset
             datamodule = welqrate_dataset.WelQrateDataModule(cfg)
             dataset_infos = welqrate_dataset.WelQrateinfos(datamodule, cfg)
-            train_smiles = None
-            
+            train_smiles = None    
         else:
             raise ValueError("Dataset not implemented")
             
@@ -85,13 +66,12 @@ def main(cfg: DictConfig):
     else:
         raise NotImplementedError("Unknown dataset {}".format(cfg["dataset"]))
 
-
     utils.create_folders(cfg)
 
     if cfg.model.type == 'discrete' and cfg.general.setting != 'augment':
+        # add the pretraining guidance 
         model = DiscreteDenoisingDiffusion(cfg=cfg, **model_kwargs)
     elif cfg.model.type == 'discrete' and cfg.general.setting == 'augment':
-        print(111111111111111111111111111)
         model = DiscreteDenoisingDiffusion(cfg=cfg, **model_kwargs, augment=True, 
                                            max_aug_steps=cfg.augment_data.max_aug_steps)
 
@@ -111,7 +91,6 @@ def main(cfg: DictConfig):
         ema_callback = utils.EMA(decay=cfg.train.ema_decay)
         callbacks.append(ema_callback)
 
-
     use_gpu = 1 > 0 and torch.cuda.is_available()
     trainer = Trainer(gradient_clip_val=cfg.train.clip_grad,
                       strategy="ddp_find_unused_parameters_true",  # Needed to load old checkpoints
@@ -125,31 +104,27 @@ def main(cfg: DictConfig):
                       log_every_n_steps=50,
                       logger = [])
     
-    # load the dataset for augmentation
+    # load the selected dataset for augmentation
     name = cfg.augment_data.name
-    root = cfg.augment_data.data_dir
-    # print current working directory
-    # print("Current working directory: {0}".format(os.getcwd()))
+    split_scheme = cfg.augment_data.split
+    ratio = cfg.augment_data.ratio
+    print(ratio)
+
+    ### ------------- Augmentation ------------- ###
+    sampled_smiles_path = f'sampled_smiles_{name}_{split_scheme}_{ratio}.csv'
+    sampled_smiles_df = pd.read_csv(sampled_smiles_path)
+    sampled_scaffolds = sampled_smiles_df['scaffold'].tolist()
+    # sampled_smiles = sampled_smiles_df['smiles'].tolist()
+    sampled_labels = sampled_smiles_df['y'].tolist()  
     
-    data_dict = get_tdc_dataset(name, root)
-    train_data = data_dict['train']
-    train_smiles = [data['smiles'] for data in train_data]
-    train_y = [data['y'].item() for data in train_data]
-    augment_selector = AugmentationDatasetSelector(name = name , root = root, smiles_list = train_smiles, y_list = train_y)
-    cluster_ids = augment_selector.scaffold_clustering(cutoff=0.4)
-    sampled_smiles_df = augment_selector.augmentation_sampling(N = 100, seed = 42)
-    sampled_smiles = sampled_smiles_df['smiles'].tolist()
-    selected_data = AugmentationDataset(name = name, root = root, smiles_list = sampled_smiles,)
+    selected_data = AugmentationDataset(cfg = cfg, smiles_list = sampled_scaffolds, 
+                                        label_list = sampled_labels)
 
     augment_loader = DataLoader(selected_data, batch_size=cfg.augment_data.batch_size, 
                                 shuffle=False)
     
-    # for i in range(5):
-    #     print(selected_data[i])
-        
-    # for batch in augment_loader:
-    #     print(batch)
-    #     break
+    sampled_labels = selected_data.get_label_list()
+    print(sampled_labels)
 
     if cfg.general.setting == 'train_scratch':
         trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.general.resume) # resume: null
@@ -157,10 +132,26 @@ def main(cfg: DictConfig):
     elif cfg.general.setting == 'train_continue':
         trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.general.resume)
 
-    # replace the datamodule with dataloader = 
-
     elif cfg.general.setting in ['test', 'augment']:
         trainer.test(model, dataloaders=augment_loader, ckpt_path=cfg.general.ckpt_path)
+        generated_graphs = model.get_augmented_graphs()
+
+        # assign formal charge and explicit Hydrogen to the generated graphs
+
+        # check the validity of the generated graphs
+        from analysis.rdkit_functions import MoleculeValidator
+        metrics = MoleculeValidator(atom_decoder=dataset_infos.atom_decoder)
+        metrics_dict = metrics.process_molecules(generated_graphs)
+        print('validity', metrics_dict['validity'])
+        print('relaxed_validity', metrics_dict['relaxed_validity'])
+
+        # for i in range(len(generated_graphs)): list index out of range
+        #     generated_graphs[i].y = torch.tensor(sampled_labels[i], dtype=torch.int)
+        torch.save(generated_graphs, f'{name}_{split_scheme}_{ratio}_generated_graphs.pt')        
+        print(generated_graphs[0])
+
+    
+    
 
 
 

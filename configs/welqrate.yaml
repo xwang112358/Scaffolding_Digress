@@ -2,7 +2,7 @@ hydra:
   job:
     chdir: True
   run:
-    dir: ../outputs/welqrate
+    dir: ../outputs/thesis
 
 general:
   name: 'welqrate'      # Warning: 'debug' and 'test' are reserved name that have a special behavior
@@ -20,8 +20,8 @@ general:
   samples_to_save: 0
   chains_to_save: 0
   log_every_steps: 50
-  number_chain_steps: 0        # Number of frames in each gif
-  final_model_samples_to_generate: 100
+  number_chain_steps: 50        # Number of frames in each gif
+  final_model_samples_to_generate: 20
   final_model_samples_to_save: 100
   final_model_chains_to_save: 5
   evaluate_all_checkpoints: False
@@ -49,17 +49,20 @@ train:
   progress_bar: false
   weight_decay: 1e-12
   optimizer: adamw # adamw,nadamw,nadam => nadamw for large batches, see http://arxiv.org/abs/2102.06356 for the use of nesterov momentum with large batches
-  seed: 0
+  seed: 42
 
 dataset:
   name: 'welqrate'
-  datadir: 'data/welqrate/'                 # Relative to the moses_dataset.py file
+  datadir: 'data/welqrate/'                 
   remove_h: null
   filter: False
 
 augment_data:
-  name: 'HIA_Hou'
-  data_dir: '/home/allenwang/scaffold-aware/Scaffolding_Digress/TDC_Dataset/'
-  revserse_steps: 150
-  max_aug_steps: 5
-  batch_size: 32
+  name: 'AID1798'
+  data_dir: '/home/allenwang/scaffold-aware/Scaffolding_Digress/welqrate_data'
+  revserse_steps: 50  # number of reverse steps for augmentation
+  max_aug_steps: 20
+  batch_size: 128
+  ratio: 0.1  
+  split: 'random_cv1'  # split scheme of welqrate
+  visualize: True

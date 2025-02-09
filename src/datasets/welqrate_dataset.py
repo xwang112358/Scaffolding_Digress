@@ -127,6 +127,7 @@ class WelQrateDataset(InMemoryDataset):
             with open(smiles_save_path, 'w') as f:
                 f.writelines('%s\n' % s for s in smiles_kept)
             print(f"Number of molecules kept: {len(smiles_kept)} / {len(smiles_list)}")
+            
 class WelQrateDataModule(MolecularDataModule):
     def __init__(self, cfg):
         self.remove_h = True 
@@ -139,6 +140,7 @@ class WelQrateDataModule(MolecularDataModule):
                     'val': WelQrateDataset(stage='val', root=root_path, filter_dataset=self.filter_dataset),
                     'test': WelQrateDataset(stage='test', root=root_path, filter_dataset=self.filter_dataset)}
         super().__init__(cfg, datasets)
+
 class WelQrateinfos(AbstractDatasetInfos):
     def __init__(self, datamodule, cfg, recompute_statistics=False, meta=None):
         self.name = 'WelQrate'
@@ -204,6 +206,7 @@ class WelQrateinfos(AbstractDatasetInfos):
             self.valency_distribution = valencies
         # after we can be sure we have the data, complete infos
         self.complete_infos(n_nodes=self.n_nodes, node_types=self.node_types)
+
 def get_train_smiles(cfg, datamodule, dataset_infos, evaluate_dataset=False):
     base_path = pathlib.Path(os.path.realpath(__file__)).parents[2]
     smiles_path = os.path.join(base_path, cfg.dataset.datadir)

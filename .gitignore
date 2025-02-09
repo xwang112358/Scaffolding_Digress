@@ -158,3 +158,6 @@ ggg_utils/
 saved_models
 src/analysis/orca/orca
 src/analysis/orca/tmp*
+archives/
+welqrate_data/
+conversion_pipeline_results/

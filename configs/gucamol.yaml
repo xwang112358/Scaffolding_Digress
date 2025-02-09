@@ -2,25 +2,25 @@ hydra:
   job:
     chdir: True
   run:
-    dir: ../outputs/Repaint_QM9
+    dir: ../outputs/guacamol
 
 general:
-  name: 'RePaint'      # Warning: 'debug' and 'test' are reserved name that have a special behavior
+  name: 'guacamol'      # Warning: 'debug' and 'test' are reserved name that have a special behavior
+  wandb: 'disabled'             # online | offline | disabled
+  gpus: [0]                     # Multi-gpu is not implemented on this branch
   setting: 'augment'
-  wandb: 'offline'             # online | offline | disabled
-  gpus: 1                     # Multi-gpu is not implemented on this branch
   resume: null          # If resume, path to ckpt file from outputs directory in main directory
-  test_only: null        # Use absolute path
-  test_mode: 'augment'
-  ckpt_path: /home/allenwang/scaffold-aware/Scaffolding_Digress/outputs/Repaint_QM9/checkpoints/RePaint/epoch=286.ckpt #'/home/allenwang/scaffold-aware/Scaffolding_Digress/checkpoints/qm9_test/last-v4.ckpt'
+  test_only: null         # Use absolute path
+  test_mode: 'augment' # 'augment' | 'reconstruct'
+  ckpt_path: '/home/allenwang/scaffold-aware/Scaffolding_Digress/checkpoints/guacamol.ckpt'
   check_val_every_n_epochs: 1
-  sample_every_val: 1
+  sample_every_val: 4
   val_check_interval: null
-  samples_to_generate: 100      
-  samples_to_save: 3
-  chains_to_save: 1
+  samples_to_generate: 256       # We advise to set it to 2 x batch_size maximum
+  samples_to_save: 0
+  chains_to_save: 0
   log_every_steps: 50
-  number_chain_steps: 8
+  number_chain_steps: 0        # Number of frames in each gif
   final_model_samples_to_generate: 100
   final_model_samples_to_save: 100
   final_model_chains_to_save: 5
@@ -32,10 +32,10 @@ model:
   model: 'graph_tf'
   diffusion_steps: 500
   diffusion_noise_schedule: 'cosine'              # 'cosine', 'polynomial_2'
-  n_layers: 9
+  n_layers: 12
   extra_features: 'all' 
-  hidden_mlp_dims: {'X': 256, 'E': 128, 'y': 128}
-  hidden_dims: {'dx': 256, 'de': 64, 'dy': 64, 'n_head': 8, 'dim_ffX': 256, 'dim_ffE': 128, 'dim_ffy': 128}
+  hidden_mlp_dims: {'X': 256, 'E': 128, 'y': 256}
+  hidden_dims: {'dx': 256, 'de': 64, 'dy': 128, 'n_head': 8, 'dim_ffX': 256, 'dim_ffE': 128, 'dim_ffy': 256}
   lambda_train: [5, 0]
 
 train:
@@ -52,8 +52,14 @@ train:
   seed: 0
 
 dataset:
-  name: 'qm9'
-  datadir: 'data/qm9/qm9_pyg/'                 # Relative to the moses_dataset.py file
+  name: 'guacamol'
+  datadir: 'data/guacamol/'                 # Relative to the moses_dataset.py file
   remove_h: null
   filter: False
 
+augment_data:
+  name: 'HIA_Hou'
+  data_dir: '/home/allenwang/scaffold-aware/Scaffolding_Digress/TDC_Dataset/'
+  revserse_steps: 50
+  max_aug_steps: 1
+  batch_size: 32

@@ -17,7 +17,10 @@ print(train_y[:5])
 
 augment_selector = AugmentationDatasetSelector(name = name , root = root, smiles_list = train_smiles, y_list = train_y)
 
+
+# visualize the clustering results to determine the cutoff value
 cluster_ids = augment_selector.scaffold_clustering(cutoff=0.4)
+
 
 sampled_smiles_df = augment_selector.augmentation_sampling(N = 100, seed = 42)
 sampled_smiles = sampled_smiles_df['smiles'].tolist()

@@ -156,7 +156,7 @@ def build_molecule_with_partial_charges(atom_types, edge_types, atom_decoder, ve
     if verbose:
         print("\nbuilding new molecule")
 
-    mol = Chem.RWMol()
+    mol = Chem.RWMol() # Creates a new editable RDKit molecule
     for atom in atom_types:
         a = Chem.Atom(atom_decoder[atom.item()])
         mol.AddAtom(a)
@@ -332,3 +332,86 @@ def compute_molecular_metrics(molecule_list, train_smiles, dataset_info):
         wandb.log(dic)
 
     return validity_dict, rdkit_metrics, all_smiles
+
+
+
+class MoleculeValidator:
+    def __init__(self, atom_decoder):
+        """
+        Initialize validator with atom decoder mapping
+        Args:
+            atom_decoder (dict): Maps indices to atom symbols (e.g., {6: 'C', 7: 'N', 8: 'O'})
+        """
+        self.atom_decoder = atom_decoder
+
+    def process_molecules(self, molecule_list):
+        """
+        Process a list of molecular graphs and return validity info and SMILES
+        Args:
+            molecule_list (list): List of [atom_types, edge_types] pairs
+        Returns:
+            dict: Contains validity statistics and SMILES strings
+        """
+        # Standard validity check
+        valid_count = 0
+        valid_smiles = []
+        all_smiles = []
+        num_components = []
+
+        # Relaxed validity check
+        relaxed_valid_count = 0
+        relaxed_valid_smiles = []
+
+        for mol_data in molecule_list:
+            atom_types, edge_types = mol_data[0], mol_data[1]  # Correctly unpack the list format
+            
+            # Standard validity check
+            mol = build_molecule(atom_types, edge_types, self.atom_decoder)
+            smiles = mol2smiles(mol)
+            all_smiles.append(smiles)
+
+            if smiles is not None:
+                try:
+                    mol_frags = Chem.rdmolops.GetMolFrags(mol, asMols=True, sanitizeFrags=True)
+                    num_components.append(len(mol_frags))
+                    largest_mol = max(mol_frags, default=mol, key=lambda m: m.GetNumAtoms())
+                    smiles = mol2smiles(largest_mol)
+                    valid_smiles.append(smiles)
+                    valid_count += 1
+                except (Chem.rdchem.AtomValenceException, Chem.rdchem.KekulizeException):
+                    pass
+
+            # Relaxed validity check (with partial charges)
+            mol_relaxed = build_molecule_with_partial_charges(atom_types, edge_types, self.atom_decoder)
+            smiles_relaxed = mol2smiles(mol_relaxed)
+            
+            if smiles_relaxed is not None:
+                try:
+                    mol_frags = Chem.rdmolops.GetMolFrags(mol_relaxed, asMols=True, sanitizeFrags=True)
+                    largest_mol = max(mol_frags, default=mol_relaxed, key=lambda m: m.GetNumAtoms())
+                    smiles_relaxed = mol2smiles(largest_mol)
+                    relaxed_valid_smiles.append(smiles_relaxed)
+                    relaxed_valid_count += 1
+                except (Chem.rdchem.AtomValenceException, Chem.rdchem.KekulizeException):
+                    pass
+
+        # Calculate component statistics
+        nc_mu = np.mean(num_components) if len(num_components) > 0 else 0
+        nc_min = np.min(num_components) if len(num_components) > 0 else 0
+        nc_max = np.max(num_components) if len(num_components) > 0 else 0
+
+        return {
+            'validity': valid_count / len(molecule_list),
+            'relaxed_validity': relaxed_valid_count / len(molecule_list),
+            'valid_count': valid_count,
+            'relaxed_valid_count': relaxed_valid_count,
+            'total_count': len(molecule_list),
+            'all_smiles': all_smiles,
+            'valid_smiles': valid_smiles,
+            'relaxed_valid_smiles': relaxed_valid_smiles,
+            'components': {
+                'mean': nc_mu,
+                'min': nc_min,
+                'max': nc_max
+            }
+        }

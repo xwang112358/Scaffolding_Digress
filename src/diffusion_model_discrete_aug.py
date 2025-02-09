@@ -15,6 +15,7 @@ from metrics.abstract_metrics import SumExceptBatchMetric, SumExceptBatchKL, NLL
 from src import utils
 
 
+
 class DiscreteDenoisingDiffusion(pl.LightningModule):
     def __init__(self, cfg, dataset_infos, train_metrics, sampling_metrics, visualization_tools, extra_features,
                  domain_features, augment = False, max_aug_steps = 10):
@@ -29,6 +30,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         self.model_dtype = torch.float32
         self.T = cfg.model.diffusion_steps
         self.test_mode = cfg.general.test_mode
+        self.batch_id = 0
         
         # augmentation
         self.augment = augment
@@ -238,19 +240,53 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         # nll = self.compute_val_loss(pred, noisy_data, dense_data.X, dense_data.E, data.y, node_mask, test=True)
         # return {'loss': nll}
         
-        dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
+        # samples_left_to_generate = self.cfg.general.final_model_samples_to_generate
+        # samples_left_to_save = self.cfg.general.final_model_samples_to_save
+        # chains_left_to_save = self.cfg.general.final_model_chains_to_save
+        # ident = 0
+        
+        # while samples_left_to_generate > 0:
+        #     bs = 2 * self.cfg.augment_data.batch_size
+        #     to_generate = min(samples_left_to_generate, bs)
+        #     to_save = min(samples_left_to_save, bs)
+        #     chains_save = min(chains_left_to_save, bs)
+            
+        #     batch_id = ident
+        #     batch_size = to_generate
+        #     num_nodes = None
+        #     save_final = to_save
+        #     keep_chain = chains_save
+
+        scaffold_mask = data.node_mask
+        dense_data, node_mask, dense_scaffold_mask = utils.to_dense_scaffold(data.x, data.edge_index, data.edge_attr, data.batch, scaffold_mask)
         dense_data = dense_data.mask(node_mask)
         
         # create a list of sum of node mask in dim 0
         n_nodes = node_mask.sum(1)
         X, E = dense_data.X, dense_data.E
-        # print('X, E', X.shape, E.shape)
+        print('X, E', X.shape, E.shape)
+        # print(X, E)
+        print('111111111111node_mask', node_mask)
+        print('111111111111dense_scaffold_mask', dense_scaffold_mask)
+        # print(dense_scaffold_mask)  
         # check apply noise
         noisy_data = self.apply_noise(X, E, data.y, node_mask)
-        
         X, E, y = noisy_data['X_t'], noisy_data['E_t'], noisy_data['y_t']
         assert (E == torch.transpose(E, 1, 2)).all()
+        #--------------------------------------
+        number_chain_steps = 30
+        keep_chain = 5
         
+        # print(X.shape)
+        # print(data.x.shape)
+        if keep_chain > X.shape[0]:
+            keep_chain = X.shape[0]
+        
+        chain_X_size = torch.Size((number_chain_steps, keep_chain, X.size(1)))
+        chain_E_size = torch.Size((number_chain_steps, keep_chain, E.size(1), E.size(2)))
+        chain_X = torch.zeros(chain_X_size)
+        chain_E = torch.zeros(chain_E_size)
+        #--------------------------------------
         for s_int in reversed(range(0, self.cfg.augment_data.revserse_steps)): # can set to a higher value to increase validity
             s_array = s_int * torch.ones((X.shape[0], 1)).type_as(y)
             t_array = s_array + 1
@@ -260,9 +296,26 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
             sampled_s, discrete_sampled_s = self.sample_p_zs_given_zt(s_norm, t_norm, X, E, y, node_mask)
             X, E, y = sampled_s.X, sampled_s.E, sampled_s.y
             
+            write_index = (s_int * number_chain_steps) // self.cfg.augment_data.revserse_steps
+            chain_X[write_index] = discrete_sampled_s.X[:keep_chain]
+            chain_E[write_index] = discrete_sampled_s.E[:keep_chain]
+            
         sampled_s = sampled_s.mask(node_mask, collapse=True)
         X, E, y = sampled_s.X, sampled_s.E, sampled_s.y
         
+        if keep_chain > 0:
+            final_X_chain = X[:keep_chain]
+            final_E_chain = E[:keep_chain]
+            
+            chain_X[0] = final_X_chain 
+            chain_E[0] = final_E_chain
+            
+            chain_X = diffusion_utils.reverse_tensor(chain_X)
+            chain_E = diffusion_utils.reverse_tensor(chain_E)
+            
+            chain_X = torch.cat([chain_X, chain_X[-1:].repeat(10, 1, 1)], dim=0)
+            chain_E = torch.cat([chain_E, chain_E[-1:].repeat(10, 1, 1, 1)], dim=0)
+
         molecule_list = []
         
         for i in range(X.shape[0]):
@@ -272,58 +325,64 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
             molecule_list.append([atom_types, edge_types])
             
         self.augment_samples.extend(molecule_list)
-        
-        
+     
+        # if self.visualization_tools is not None:
+        #     self.print('Visualizing chains...')
+        #     current_path = os.getcwd()
+        #     num_molecules = chain_X.size(1)
+        #     for i in range(num_molecules):
+        #         result_path = os.path.join(current_path, f'chains/{self.cfg.augment_data.name}/{self.batch_id}/id_{i}')
+        #         if not os.path.exists(result_path):
+        #             os.makedirs(result_path)
+        #             _ = self.visualization_tools.visualize_chain(result_path,
+        #                                                          chain_X[:, i, :].numpy(),
+        #                                                          chain_E[:, i, :].numpy())
+        #     self.print('\nVisualizing molecules...')
+        #     current_path = os.getcwd()
+        #     result_path = os.path.join(current_path,
+        #                                f'graphs/{self.cfg.augment_data.name}/{self.batch_id}')
+        #     self.visualization_tools.visualize(result_path, molecule_list, keep_chain)
+        #     self.print("Done.")
+        #     self.batch_id += 1
+
     
     def on_test_epoch_end(self) -> None:
         
-        """ Measure likelihood on a test set and compute stability metrics. """
-        metrics = [self.test_nll.compute(), self.test_X_kl.compute(), self.test_E_kl.compute(),
-                self.test_X_logp.compute(), self.test_E_logp.compute()]
-        if wandb.run:
-            wandb.log({"test/epoch_NLL": metrics[0],
-                    "test/X_kl": metrics[1],
-                    "test/E_kl": metrics[2],
-                    "test/X_logp": metrics[3],
-                    "test/E_logp": metrics[4]}, commit=False)
-
-        self.print(f"Epoch {self.current_epoch}: Test NLL {metrics[0] :.2f} -- Test Atom type KL {metrics[1] :.2f} -- ",
-                f"Test Edge type KL: {metrics[2] :.2f}")
-
-        test_nll = metrics[0]
-        if wandb.run:
-            wandb.log({"test/epoch_NLL": test_nll}, commit=False)
-
-        self.print(f'Test loss: {test_nll :.4f}')
+        """Check the validity of the generated augmented graphs"""
         
+        # ------------- Augmentation ------------- #
+        print('Test epoch end')
         if self.augment:
             self.print('saving the augmented samples') 
-            file_name = f'augmented_samples1.txt'
-            for i in range(2,10):
-                if os.path.exists(file_name):
-                    file_name = f'augmented_samples{i}.txt'
-                else:
-                    break
-            with open(file_name, 'w') as f:
-                for item in self.augment_samples:
-                    f.write(f"N={item[0].shape[0]}\n")
-                    atoms = item[0].tolist()
-                    f.write("X: \n")
-                    for at in atoms:
-                        f.write(f"{at} ")
-                    f.write("\n")
-                    f.write("E: \n")
-                    for bond_list in item[1]:
-                        for bond in bond_list:
-                            f.write(f"{bond} ")
-                        f.write("\n")
-                    f.write("\n")
-            self.print("Augmented graphs Saved. Computing sampling metrics...")
-            self.sampling_metrics(self.augment_samples, self.name, self.current_epoch, self.val_counter, test=True, local_rank=self.local_rank)
-            self.print("Done Augmenting.")
+            # file_name = f'{self.cfg.augment_data.name}_{self.cfg.augment_data.split}_{self.cfg.augment_data.ratio}_augmented_samples1.txt'
+            # for i in range(2,10):
+            #     if os.path.exists(file_name):
+            #         file_name = f'{self.cfg.augment_data.name}_{self.cfg.augment_data.split}_{self.cfg.augment_data.ratio}_augmented_samples{i}.txt'
+            #     else:
+            #         break
+            # # writing molecular graphs, not smiles
+            # with open(file_name, 'w') as f:
+            #     for item in self.augment_samples:
+            #         f.write(f"N={item[0].shape[0]}\n")
+            #         atoms = item[0].tolist()
+            #         f.write("X: \n")
+            #         for at in atoms:
+            #             f.write(f"{at} ")
+            #         f.write("\n")
+            #         f.write("E: \n")
+            #         for bond_list in item[1]:
+            #             for bond in bond_list:
+            #                 f.write(f"{bond} ")
+            #             f.write("\n")
+            #         f.write("\n")
+        #     self.print("Augmented graphs Saved. Computing sampling metrics...")
+        #     self.sampling_metrics(self.augment_samples, self.name, self.current_epoch, self.val_counter, test=True, local_rank=self.local_rank)
+        #     self.print("Done Augmenting.")
             
-        else:
-            self.print("skpping the original sampling from the noise")
+        # else:
+        #     self.print("skpping the original sampling from the noise")
+
+        # ------------- Final Sampling ------------- #
 
     #         samples_left_to_generate = self.cfg.general.final_model_samples_to_generate
     #         samples_left_to_save = self.cfg.general.final_model_samples_to_save
@@ -372,6 +431,9 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
     #         self.sampling_metrics(samples, self.name, self.current_epoch, self.val_counter, test=True, local_rank=self.local_rank)
     #         self.print("Done testing.")
 
+    def get_augmented_graphs(self):
+        return self.convert_graphs(self.augment_samples)
+    
 
     def kl_prior(self, X, E, node_mask):
         """Computes the KL between q(z1 | x) and the prior p(z1) = Normal(0, 1).
@@ -729,7 +791,8 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
         X_s = F.one_hot(sampled_s.X, num_classes=self.Xdim_output).float()
         E_s = F.one_hot(sampled_s.E, num_classes=self.Edim_output).float()
-
+        # print('X_s', X_s)
+        # print('E_s', E_s)
         assert (E_s == torch.transpose(E_s, 1, 2)).all()
         assert (X_t.shape == X_s.shape) and (E_t.shape == E_s.shape)
 
@@ -753,3 +816,37 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         extra_y = torch.cat((extra_y, t), dim=1)
 
         return utils.PlaceHolder(X=extra_X, E=extra_E, y=extra_y)
+
+
+    def convert_graphs(self, molecule_list):
+        """Convert the generated graphs to pyg graphs"""
+        from torch_geometric.data import Data
+        
+        atom_decoder = self.dataset_info.atom_decoder
+        pyg_graphs = []
+        for i, mol in enumerate(molecule_list):
+            atom_types, edge_types = mol
+            x = F.one_hot(atom_types, num_classes=len(atom_decoder))
+            # Add an extra column to x
+            x = torch.cat([x, torch.zeros(x.size(0), 1)], dim=1)
+            
+            # Get indices where edges exist (edge_type > 0)
+            edge_index = torch.nonzero(edge_types > 0, as_tuple=True)
+            edge_index = torch.stack(edge_index, dim=0)  # Convert to (2, num_edges) format
+            # 
+            # Get edge attributes and convert to 0-based indexing
+            edge_attr = edge_types[edge_index[0], edge_index[1]] - 1  # Subtract 1 to convert to 0-based indexing
+            edge_attr = F.one_hot(edge_attr.long(), num_classes=4)
+            # Switch edge attributes for double bond (index 1) and aromatic bond (index 3)
+            mask_double = torch.all(edge_attr == torch.tensor([0,1,0,0]), dim=1)
+            mask_aromatic = torch.all(edge_attr == torch.tensor([0,0,0,1]), dim=1)
+            
+            # Create new tensor with swapped values
+            edge_attr_new = edge_attr.clone()
+            edge_attr_new[mask_double] = torch.tensor([0,0,0,1])
+            edge_attr_new[mask_aromatic] = torch.tensor([0,1,0,0])
+            edge_attr = edge_attr_new
+            
+            data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
+            pyg_graphs.append(data)
+        return pyg_graphs
