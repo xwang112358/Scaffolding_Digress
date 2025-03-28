@@ -355,15 +355,17 @@ class MoleculeValidator:
         # Standard validity check
         valid_count = 0
         valid_smiles = []
+        valid_indices = []  # New list to track indices
         all_smiles = []
         num_components = []
 
         # Relaxed validity check
         relaxed_valid_count = 0
         relaxed_valid_smiles = []
+        relaxed_valid_indices = []  # New list to track indices for relaxed validity
 
-        for mol_data in molecule_list:
-            atom_types, edge_types = mol_data[0], mol_data[1]  # Correctly unpack the list format
+        for i, mol_data in enumerate(molecule_list):
+            atom_types, edge_types = mol_data[0], mol_data[1]
             
             # Standard validity check
             mol = build_molecule(atom_types, edge_types, self.atom_decoder)
@@ -377,6 +379,7 @@ class MoleculeValidator:
                     largest_mol = max(mol_frags, default=mol, key=lambda m: m.GetNumAtoms())
                     smiles = mol2smiles(largest_mol)
                     valid_smiles.append(smiles)
+                    valid_indices.append(i)  # Store the index
                     valid_count += 1
                 except (Chem.rdchem.AtomValenceException, Chem.rdchem.KekulizeException):
                     pass
@@ -391,6 +394,7 @@ class MoleculeValidator:
                     largest_mol = max(mol_frags, default=mol_relaxed, key=lambda m: m.GetNumAtoms())
                     smiles_relaxed = mol2smiles(largest_mol)
                     relaxed_valid_smiles.append(smiles_relaxed)
+                    relaxed_valid_indices.append(i)  # Store the index
                     relaxed_valid_count += 1
                 except (Chem.rdchem.AtomValenceException, Chem.rdchem.KekulizeException):
                     pass
@@ -408,7 +412,9 @@ class MoleculeValidator:
             'total_count': len(molecule_list),
             'all_smiles': all_smiles,
             'valid_smiles': valid_smiles,
+            'valid_indices': valid_indices,  # New field
             'relaxed_valid_smiles': relaxed_valid_smiles,
+            'relaxed_valid_indices': relaxed_valid_indices,  # New field
             'components': {
                 'mean': nc_mu,
                 'min': nc_min,

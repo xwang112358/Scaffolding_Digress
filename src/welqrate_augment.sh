@@ -1,17 +1,66 @@
-# python main.py augment_data.split="random_cv1"
-# Run first batch of commands in parallel
-CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv3" &
-CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv4" &
-CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv5" &
-CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed1" &
 
-# Wait for first batch to complete
-wait
+# AID1798
+echo "Running AID1798..."
+CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv1" augment_data.name="AID1798"
+CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv2" augment_data.name="AID1798"
+CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv3" augment_data.name="AID1798"
+CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv4" augment_data.name="AID1798"
+CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv5" augment_data.name="AID1798"
+CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed1" augment_data.name="AID1798"
+CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed2" augment_data.name="AID1798"
+CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed3" augment_data.name="AID1798"
+CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed4" augment_data.name="AID1798"
+CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed5" augment_data.name="AID1798"
 
-# Run remaining commands in parallel
-CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed2" &
-CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed3" &
-CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed4" &
-CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed5" &
 
-wait
+# # # AID463087
+# echo "Running AID463087..."
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv1" augment_data.name="AID463087"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv2" augment_data.name="AID463087"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv3" augment_data.name="AID463087"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv4" augment_data.name="AID463087"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv5" augment_data.name="AID463087"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed1" augment_data.name="AID463087"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed2" augment_data.name="AID463087"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed3" augment_data.name="AID463087"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed4" augment_data.name="AID463087"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed5" augment_data.name="AID463087"
+
+# # # AID488997
+# echo "Running AID488997..."
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv1" augment_data.name="AID488997"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv2" augment_data.name="AID488997"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv3" augment_data.name="AID488997"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv4" augment_data.name="AID488997"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv5" augment_data.name="AID488997"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed1" augment_data.name="AID488997"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed2" augment_data.name="AID488997"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed3" augment_data.name="AID488997"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed4" augment_data.name="AID488997"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed5" augment_data.name="AID488997"
+
+# # # AID2689
+# echo "Running AID2689..."
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv1" augment_data.name="AID2689"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv2" augment_data.name="AID2689"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv3" augment_data.name="AID2689"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv4" augment_data.name="AID2689"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv5" augment_data.name="AID2689"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed1" augment_data.name="AID2689"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed2" augment_data.name="AID2689"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed3" augment_data.name="AID2689"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed4" augment_data.name="AID2689"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed5" augment_data.name="AID2689"
+
+# # AID485290
+# echo "Running AID485290..."
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv1" augment_data.name="AID485290"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv2" augment_data.name="AID485290"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv3" augment_data.name="AID485290"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv4" augment_data.name="AID485290"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="random_cv5" augment_data.name="AID485290"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed1" augment_data.name="AID485290"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed2" augment_data.name="AID485290"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed3" augment_data.name="AID485290"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed4" augment_data.name="AID485290"
+# CUDA_VISIBLE_DEVICES=0 python main.py augment_data.split="scaffold_seed5" augment_data.name="AID485290"

@@ -59,10 +59,12 @@ dataset:
 
 augment_data:
   name: 'AID1798'
+  sampling_method: 'SABS' # 'uniform_active'
   data_dir: '/home/allenwang/scaffold-aware/Scaffolding_Digress/welqrate_data'
   revserse_steps: 50  # number of reverse steps for augmentation
   max_aug_steps: 20
-  batch_size: 128
+  batch_size: 256
   ratio: 0.1  
   split: 'random_cv1'  # split scheme of welqrate
-  visualize: True
+  visualize: False
+  plot_clustering: False
