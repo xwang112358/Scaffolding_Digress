@@ -14,6 +14,7 @@ def main(cfg: DictConfig):
     root = cfg.augment_data.data_dir
     split_scheme = cfg.augment_data.split
     ratio = cfg.augment_data.ratio
+    sampling_method = cfg.augment_data.sampling_method
     print(f'name: {name} \n root: {root} \n split_scheme: {split_scheme} \n ratio: {ratio}')
 
     # load train data 
@@ -24,35 +25,44 @@ def main(cfg: DictConfig):
     num_train_samples = len(train_smiles)
     train_y = train_data.y.tolist()
 
-    os.makedirs('./sampled_smiles/', exist_ok=True)
+    os.makedirs(f'./sampled_smiles/{sampling_method}', exist_ok=True)
     save_path = f'sampled_smiles_{name}_{split_scheme}_{ratio}.csv'
-    if os.path.exists(f'./sampled_smiles/{save_path}'):
+    if os.path.exists(f'./sampled_smiles/{sampling_method}/{save_path}'):
         print('Loading saved sampled smiles')
-        sampled_smiles_df = pd.read_csv(f'./sampled_smiles/{save_path}')
+        sampled_smiles_df = pd.read_csv(f'./sampled_smiles/{sampling_method}/{save_path}')
         print('smiles has been sampled for this setting')
     else:
         print('start constructing scaffold library')
         augment_selector = AugmentationDatasetSelector(name=name, root=root, smiles_list=train_smiles, y_list=train_y)
         print('start scaffold clustering')
         start_time = time.time()
+        N = int(num_train_samples * ratio)
         # scaffold-aware balanced sampling
         if cfg.augment_data.sampling_method == 'SABS':
             cluster_ids = augment_selector.scaffold_clustering(n_clusters=500)  
             print('scaffold clustering time:', time.time() - start_time)
             print('start sampling')
             start_time = time.time()
-            N = int(num_train_samples * ratio)
             sampled_smiles_df = augment_selector.SABS_sampling(N=N, seed=42)
             print('sampling time:', time.time() - start_time)
         # uniform active sampling
         elif cfg.augment_data.sampling_method == 'uniform_active':
             sampled_smiles_df = augment_selector.active_sampling(N=N, seed=42)
             print('sampling time:', time.time() - start_time)
+        # class-aware sampling
+        elif cfg.augment_data.sampling_method == 'sabs_class':
+            sampled_smiles_df = augment_selector.SABS_class_sampling(N=N, seed=42)
+            print('sampling time:', time.time() - start_time)
+        # scaffold-aware sampling
+        elif cfg.augment_data.sampling_method == 'sabs_scaffold':
+            cluster_ids = augment_selector.scaffold_clustering(n_clusters=500)  
+            sampled_smiles_df = augment_selector.SABS_scaffold_sampling(N=N, seed=42)
+            print('sampling time:', time.time() - start_time)
         else:
             raise ValueError(f"Invalid sampling method: {cfg.augment_data.sampling_method}")
         
-        print('Saving sampled molecules and related scaffolds')
-        sampled_smiles_df.to_csv(f'./sampled_smiles/{save_path}', index=False)
+        print(f'Saving sampled molecules and related scaffolds to {save_path}')
+        sampled_smiles_df.to_csv(f'./sampled_smiles/{sampling_method}/{save_path}', index=False)
     
 if __name__ == '__main__':
     main()

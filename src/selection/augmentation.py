@@ -246,6 +246,115 @@ class AugmentationDatasetSelector:
         else:
             plt.show()
 
+    def SABS_class_sampling(self, N, seed=42):
+        """
+        Class-aware variant of SABS that only considers class labels for sampling.
+        This method implements balanced sampling based on class distribution.
+        
+        Parameters:
+        - N: Number of samples to draw
+        - seed: Random seed for reproducibility
+        
+        Returns:
+        - selected_data: DataFrame containing sampled molecules
+        """
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+        num_molecules = len(self.smiles_list)
+        labels = np.array(self.y_list)
+        unique_classes = np.unique(labels)
+        
+        # Count instances per class
+        N_c = {}
+        for c in unique_classes:
+            N_c[c] = np.sum(labels == c)
+            
+        # Calculate class weights (inverse frequency)
+        epsilon = 1e-6
+        w_c = {}
+        for c in unique_classes:
+            w_c[c] = 1.0 / (N_c[c] + epsilon)
+            
+        # Calculate class probabilities
+        sum_w_c = sum(w_c.values())
+        P_c = {c: w_c[c] / sum_w_c for c in unique_classes}
+        
+        # Calculate sampling probabilities for each molecule
+        sampling_probs = np.zeros(num_molecules)
+        for idx in range(num_molecules):
+            c = labels[idx]
+            sampling_probs[idx] = P_c[c]
+            
+        # Normalize probabilities
+        sampling_probs /= np.sum(sampling_probs)
+        
+        # Sample molecules
+        sampled_indices = np.random.choice(num_molecules, size=N, replace=True, p=sampling_probs)
+        
+        selected_smiles = [self.smiles_list[idx] for idx in sampled_indices]
+        selected_labels = [self.y_list[idx] for idx in sampled_indices]
+        selected_scaffolds = [self.scaff_list[idx] for idx in sampled_indices]
+        selected_data = pd.DataFrame({'smiles': selected_smiles, 'scaffold': selected_scaffolds, 'y': selected_labels})
+        
+        return selected_data
+
+    def SABS_scaffold_sampling(self, N, seed=42):
+        """
+        Scaffold-aware variant of SABS that only considers scaffold clusters for sampling.
+        This method implements balanced sampling based on scaffold cluster distribution.
+        
+        Parameters:
+        - N: Number of samples to draw
+        - seed: Random seed for reproducibility
+        
+        Returns:
+        - selected_data: DataFrame containing sampled molecules
+        """
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+        if self.cluster_ids is None:
+            raise ValueError("Must run scaffold_clustering before using SABS_scaffold")
+
+        num_molecules = len(self.smiles_list)
+        cluster_ids = np.array(self.cluster_ids)
+        unique_clusters = np.unique(cluster_ids)
+        
+        # Count instances per scaffold cluster
+        N_s = {}
+        for s in unique_clusters:
+            N_s[s] = np.sum(cluster_ids == s)
+            
+        # Calculate scaffold weights (inverse frequency)
+        epsilon = 1e-6
+        w_s = {}
+        for s in unique_clusters:
+            w_s[s] = 1.0 / (N_s[s] + epsilon)
+            
+        # Calculate scaffold probabilities
+        sum_w_s = sum(w_s.values())
+        P_s = {s: w_s[s] / sum_w_s for s in unique_clusters}
+        
+        # Calculate sampling probabilities for each molecule
+        sampling_probs = np.zeros(num_molecules)
+        for idx in range(num_molecules):
+            s = cluster_ids[idx]
+            sampling_probs[idx] = P_s[s]
+            
+        # Normalize probabilities
+        sampling_probs /= np.sum(sampling_probs)
+        
+        # Sample molecules
+        sampled_indices = np.random.choice(num_molecules, size=N, replace=True, p=sampling_probs)
+        
+        selected_smiles = [self.smiles_list[idx] for idx in sampled_indices]
+        selected_labels = [self.y_list[idx] for idx in sampled_indices]
+        selected_scaffolds = [self.scaff_list[idx] for idx in sampled_indices]
+        selected_data = pd.DataFrame({'smiles': selected_smiles, 'scaffold': selected_scaffolds, 'y': selected_labels})
+        
+        return selected_data
+
 
 # ----------------- AugmentationDataset -----------------
 atom_decoder = ['H', 'C', 'N', 'O', 'F', 'Si', 'P', 'S', 'Cl', 'Br', 'I']
@@ -278,7 +387,9 @@ class AugmentationDataset(InMemoryDataset):
     
         super(AugmentationDataset, self).__init__(root, transform, pre_transform)
         
-        self.data, self.slices = torch.load(self.processed_paths[0])
+        # Always process the data instead of loading from file
+        self.process()
+        self.data, self.slices = self.collate(self.data_list)
 
     @property
     def processed_dir(self):
@@ -363,6 +474,7 @@ class AugmentationDataset(InMemoryDataset):
             smiles_kept.append(smile)
             data_list.append(data)
             # save the kept smiles
+        self.data_list = data_list  # Store data_list for use in __init__
         torch.save(smiles_kept, os.path.join(self.root, self.name, f'{self.name}_{self.split_scheme}_{self.ratio}_selected_filtered_smiles.pt'))
         torch.save(self.collate(data_list), self.processed_paths[0])
     

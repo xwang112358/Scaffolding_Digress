@@ -24,6 +24,7 @@ warnings.filterwarnings("ignore", category=PossibleUserWarning)
 def main(cfg: DictConfig):
     dataset_config = cfg["dataset"]
     print(cfg)
+    sampling_method = cfg.augment_data.sampling_method
 
     if dataset_config["name"] in ['qm9', 'guacamol', 'moses', 'welqrate']:
         from metrics.molecular_metrics import TrainMolecularMetrics, SamplingMolecularMetrics
@@ -109,25 +110,24 @@ def main(cfg: DictConfig):
 
     ### ------------- Augmentation ------------- ###
     # if generated graphs already exist, terminate the program
-    if os.path.exists(f'./generated_graphs/{name}_{split_scheme}_{ratio}_generated_graphs.pt'):
+    if os.path.exists(f'./generated_graphs/{sampling_method}/{name}_{split_scheme}_{ratio}_generated_graphs.pt'):
         print(f'Generated graphs already exist for {name}_{split_scheme}_{ratio}')
-        if not os.path.exists(f'./generated_graphs/{name}_{split_scheme}_{ratio}_relaxed_valid_smiles.csv'):
+        if not os.path.exists(f'./generated_graphs/{sampling_method}/{name}_{split_scheme}_{ratio}_relaxed_valid_smiles.csv'):
             from analysis.rdkit_functions import MoleculeValidator
-            generated_graphs = torch.load(f'./generated_graphs/{name}_{split_scheme}_{ratio}_generated_graphs.pt')
+            generated_graphs = torch.load(f'./generated_graphs/{sampling_method}/{name}_{split_scheme}_{ratio}_generated_graphs.pt')
             metrics = MoleculeValidator(atom_decoder=dataset_infos.atom_decoder)
             metrics_dict = metrics.process_molecules(generated_graphs)
             print('validity', metrics_dict['validity'])
             print('relaxed_validity', metrics_dict['relaxed_validity'])
             relaxed_valid_smiles = metrics_dict['relaxed_valid_smiles']
             relaxed_valid_smiles_df = pd.DataFrame({'smiles': relaxed_valid_smiles}, columns=['smiles'])
-            relaxed_valid_smiles_df.to_csv(f'./generated_graphs/{name}_{split_scheme}_{ratio}_relaxed_valid_smiles.csv', index=False)
+            relaxed_valid_smiles_df.to_csv(f'./generated_graphs/{sampling_method}/{name}_{split_scheme}_{ratio}_relaxed_valid_smiles.csv', index=False)
 
             return
-        
         return
 
     # load the sampled smiles
-    sampled_smiles_path = f'./sampled_smiles/sampled_smiles_{name}_{split_scheme}_{ratio}.csv'
+    sampled_smiles_path = f'./sampled_smiles/{sampling_method}/sampled_smiles_{name}_{split_scheme}_{ratio}.csv'
     sampled_smiles_df = pd.read_csv(sampled_smiles_path)
     sampled_scaffolds = sampled_smiles_df['scaffold'].tolist()
     sampled_labels = sampled_smiles_df['y'].tolist()  
@@ -135,6 +135,7 @@ def main(cfg: DictConfig):
     selected_data = AugmentationDataset(cfg = cfg, 
                                         smiles_list = sampled_scaffolds, 
                                         label_list = sampled_labels)
+    
     augment_loader = DataLoader(selected_data, 
                                 batch_size=cfg.augment_data.batch_size, 
                                 shuffle=False)
@@ -164,21 +165,19 @@ def main(cfg: DictConfig):
         relaxed_valid_smiles = metrics_dict['relaxed_valid_smiles']
         print(f'Number of relaxed valid graphs: {len(relaxed_valid_indices)}')
 
-        valid_label_list = []
         valid_generated_pyg_graphs = []
         for i in relaxed_valid_indices:
-            valid_label_list.append(selected_data[i].y.item())
-            valid_generated_pyg_graphs.append(generated_pyg_graphs[i])
+            graph = generated_pyg_graphs[i]
+            label = selected_data[i].y.item()
+            graph.y = torch.tensor([label], dtype=torch.int32)
+            valid_generated_pyg_graphs.append(graph)
 
-        os.makedirs(f'./generated_graphs/', exist_ok=True)
-        torch.save(valid_generated_pyg_graphs, f'./generated_graphs/{name}_{split_scheme}_{ratio}_generated_graphs.pt') 
+        os.makedirs(f'./generated_graphs/{sampling_method}', exist_ok=True)
+        torch.save(valid_generated_pyg_graphs, f'./generated_graphs/{sampling_method}/{name}_{split_scheme}_{ratio}_generated_graphs.pt') 
         # store relaxed valid smiles as csv
         relaxed_valid_smiles_df = pd.DataFrame({'smiles': relaxed_valid_smiles}, columns=['smiles'])
-        relaxed_valid_smiles_df.to_csv(f'./generated_graphs/{name}_{split_scheme}_{ratio}_relaxed_valid_smiles.csv', index=False)
+        relaxed_valid_smiles_df.to_csv(f'./generated_graphs/{sampling_method}/{name}_{split_scheme}_{ratio}_relaxed_valid_smiles.csv', index=False)
         # print(generated_graphs[0])
 
-        
-
-    
 if __name__ == '__main__':
     main()
