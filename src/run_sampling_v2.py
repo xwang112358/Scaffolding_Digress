@@ -1,7 +1,7 @@
 import os
 import time
 from welqrate.dataset import WelQrateDataset
-from selection.augmentation import AugmentationDatasetSelector
+from selection.augmentation import AugmentationDatasetSelector_v2
 import hydra
 from omegaconf import DictConfig
 import pandas as pd
@@ -21,9 +21,12 @@ def main(cfg: DictConfig):
     welqrate_dataset = WelQrateDataset(dataset_name=name, root=root, mol_repr='2dmol')
     split_dict = welqrate_dataset.get_idx_split(split_scheme=split_scheme)
     train_data = welqrate_dataset[split_dict['train']]
-    train_smiles = train_data.smiles
-    num_train_samples = len(train_smiles)
-    train_y = train_data.y.tolist()
+    num_train_samples = len(train_data)
+    # only use active molecules for augmentation
+    train_active_data = [data for data in train_data if data.y != 0]
+    num_train_active_samples = len(train_active_data)
+    train_active_smiles = [data.smiles for data in train_active_data]
+    print(f'number of active samples: {num_train_active_samples}')
 
     os.makedirs(f'./sampled_smiles/{sampling_method}', exist_ok=True)
     save_path = f'sampled_smiles_{name}_{split_scheme}_{ratio}.csv'
@@ -33,17 +36,21 @@ def main(cfg: DictConfig):
         print('smiles has been sampled for this setting')
     else:
         print('start constructing scaffold library')
-        augment_selector = AugmentationDatasetSelector(name=name, root=root, smiles_list=train_smiles, y_list=train_y)
+        augment_selector = AugmentationDatasetSelector_v2(name=name, root=root, smiles_list=train_active_smiles)
         print('start scaffold clustering')
         start_time = time.time()
         N = int(num_train_samples * ratio)
         # scaffold-aware balanced sampling
-        if cfg.augment_data.sampling_method == 'SABS':
-            cluster_ids = augment_selector.scaffold_clustering(n_clusters=500)  
+        if cfg.augment_data.sampling_method == 'sabs':
+            cluster_ids, optimal_n_clusters = augment_selector.scaffold_clustering(min_clusters=10, max_clusters=30)  
             print('scaffold clustering time:', time.time() - start_time)
+            
             print('start sampling')
             start_time = time.time()
-            sampled_smiles_df = augment_selector.SABS_sampling(N=N, seed=42)
+            sampled_smiles_df = augment_selector.sabs_sampling(N=N, seed=42)
+            print('sampling time:', time.time() - start_time)
+        elif cfg.augment_data.sampling_method == 'uniform_active':
+            sampled_smiles_df = augment_selector.active_sampling(N=N, seed=42)
             print('sampling time:', time.time() - start_time)
         else:
             raise ValueError(f"Invalid sampling method: {cfg.augment_data.sampling_method}")

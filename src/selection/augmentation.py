@@ -1,4 +1,3 @@
-# from ogb.graphproppred import PygGraphPropPredDataset
 import os
 import pandas as pd
 from torch_geometric.data import InMemoryDataset, Data
@@ -20,6 +19,8 @@ from src.analysis.rdkit_functions import build_molecule_with_partial_charges, mo
 from sklearn.cluster import MiniBatchKMeans
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
+from sklearn.metrics import silhouette_score
+from sklearn.cluster import KMeans      
 
 # Add this line at the top of the file with other imports
 __all__ = ['AugmentationDatasetSelector', 'SMILESRoundTripChecker', 'AugmentationDataset']
@@ -173,78 +174,6 @@ class AugmentationDatasetSelector:
 
         return selected_data
     
-    def plot_clustering(self, save_path=None, method='pca'):
-        """
-        Visualize clustering results using dimensionality reduction
-        
-        Parameters:
-        - save_path: Path to save the plot. If None, displays the plot instead.
-        - method: 'tsne' or 'pca' for visualization method
-        """
-        from sklearn.manifold import TSNE
-        from sklearn.decomposition import PCA
-        import seaborn as sns
-        
-        if self.cluster_ids is None:
-            raise ValueError("Must run scaffold_clustering before plotting")
-        
-        if not hasattr(self, 'fps'):
-            raise ValueError("Fingerprints not found. Must run scaffold_clustering first")
-        
-        # Apply dimensionality reduction
-        if method.lower() == 'tsne':
-            print('Running t-SNE...')
-            reducer = TSNE(
-                n_components=2,
-                random_state=42,
-                perplexity=min(30, len(self.fps)-1),
-                n_iter=1000,
-                learning_rate='auto',
-                init='pca'
-            )
-            method_name = 't-SNE'
-        else:  # PCA
-            print('Running PCA...')
-            reducer = PCA(n_components=2, random_state=42)
-            method_name = 'PCA'
-        
-        X_2d = reducer.fit_transform(self.fps)
-        
-        # Create the plot
-        plt.figure(figsize=(10, 8))
-        scatter = plt.scatter(X_2d[:, 0], X_2d[:, 1], 
-                             c=self.cluster_ids, 
-                             cmap='tab20',
-                             alpha=0.6)
-        plt.colorbar(scatter, label='Cluster ID')
-        plt.title(f'{method_name} visualization of scaffold clusters')
-        plt.xlabel(f'{method_name} dimension 1')
-        plt.ylabel(f'{method_name} dimension 2')
-        
-        # Add legend showing number of clusters
-        n_clusters = len(np.unique(self.cluster_ids))
-        info_text = f'Number of clusters: {n_clusters}\n'
-        info_text += f'Total points: {len(self.fps)}'
-        
-        if method.lower() == 'pca':
-            # Add explained variance ratio for PCA
-            var_ratio = reducer.explained_variance_ratio_
-            info_text += f'\nExplained variance:\n'
-            info_text += f'PC1: {var_ratio[0]:.3f}\n'
-            info_text += f'PC2: {var_ratio[1]:.3f}'
-        
-        plt.text(0.02, 0.98, info_text,
-                 transform=plt.gca().transAxes,
-                 bbox=dict(facecolor='white', alpha=0.8),
-                 verticalalignment='top')
-        
-        plt.tight_layout()
-        
-        if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            plt.close()
-        else:
-            plt.show()
 
     def SABS_class_sampling(self, N, seed=42):
         """
@@ -355,6 +284,78 @@ class AugmentationDatasetSelector:
         
         return selected_data
 
+    # def plot_clustering(self, save_path=None, method='pca'):
+    #     """
+    #     Visualize clustering results using dimensionality reduction
+        
+    #     Parameters:
+    #     - save_path: Path to save the plot. If None, displays the plot instead.
+    #     - method: 'tsne' or 'pca' for visualization method
+    #     """
+    #     from sklearn.manifold import TSNE
+    #     from sklearn.decomposition import PCA
+    #     import seaborn as sns
+        
+    #     if self.cluster_ids is None:
+    #         raise ValueError("Must run scaffold_clustering before plotting")
+        
+    #     if not hasattr(self, 'fps'):
+    #         raise ValueError("Fingerprints not found. Must run scaffold_clustering first")
+        
+    #     # Apply dimensionality reduction
+    #     if method.lower() == 'tsne':
+    #         print('Running t-SNE...')
+    #         reducer = TSNE(
+    #             n_components=2,
+    #             random_state=42,
+    #             perplexity=min(30, len(self.fps)-1),
+    #             n_iter=1000,
+    #             learning_rate='auto',
+    #             init='pca'
+    #         )
+    #         method_name = 't-SNE'
+    #     else:  # PCA
+    #         print('Running PCA...')
+    #         reducer = PCA(n_components=2, random_state=42)
+    #         method_name = 'PCA'
+        
+    #     X_2d = reducer.fit_transform(self.fps)
+        
+    #     # Create the plot
+    #     plt.figure(figsize=(10, 8))
+    #     scatter = plt.scatter(X_2d[:, 0], X_2d[:, 1], 
+    #                          c=self.cluster_ids, 
+    #                          cmap='tab20',
+    #                          alpha=0.6)
+    #     plt.colorbar(scatter, label='Cluster ID')
+    #     plt.title(f'{method_name} visualization of scaffold clusters')
+    #     plt.xlabel(f'{method_name} dimension 1')
+    #     plt.ylabel(f'{method_name} dimension 2')
+        
+    #     # Add legend showing number of clusters
+    #     n_clusters = len(np.unique(self.cluster_ids))
+    #     info_text = f'Number of clusters: {n_clusters}\n'
+    #     info_text += f'Total points: {len(self.fps)}'
+        
+    #     if method.lower() == 'pca':
+    #         # Add explained variance ratio for PCA
+    #         var_ratio = reducer.explained_variance_ratio_
+    #         info_text += f'\nExplained variance:\n'
+    #         info_text += f'PC1: {var_ratio[0]:.3f}\n'
+    #         info_text += f'PC2: {var_ratio[1]:.3f}'
+        
+    #     plt.text(0.02, 0.98, info_text,
+    #              transform=plt.gca().transAxes,
+    #              bbox=dict(facecolor='white', alpha=0.8),
+    #              verticalalignment='top')
+        
+    #     plt.tight_layout()
+        
+    #     if save_path:
+    #         plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    #         plt.close()
+    #     else:
+    #         plt.show()
 
 # ----------------- AugmentationDataset -----------------
 atom_decoder = ['H', 'C', 'N', 'O', 'F', 'Si', 'P', 'S', 'Cl', 'Br', 'I']
@@ -379,6 +380,7 @@ class AugmentationDataset(InMemoryDataset):
         self.new_label_list = []
         self.name = '_'.join(name.split('-'))
         self.root = root
+
         self.smiles_list = smiles_list
         self.label_list = label_list
         self.total_data_len = len(smiles_list)
@@ -518,3 +520,202 @@ def calc_distance_matrix(fps):
         # Convert similarities to distances and add to the list
         dists.extend([1 - x for x in sims])
     return dists
+
+
+# the finalized version 
+class AugmentationDatasetSelector_v2:
+    def __init__(self, name, root, smiles_list):
+        """
+        This class is designed to construct a scaffold library for augmentation 
+        from active molecules in the training set.
+
+        Parameters:
+        - name: Name of the dataset
+        - root: Root directory for the dataset
+        - smiles_list: List of SMILES strings (assumed to be all active molecules)
+        """
+        self.name = name
+        self.root = root
+        self.smiles_list = smiles_list
+        self.scaff_list = [_generate_scaffold(smi) for smi in smiles_list]
+        self.cluster_ids = None
+        self.fps = None
+        self.optimal_n_clusters = None
+
+    def scaffold_clustering(self, max_clusters=10, min_clusters=5, random_state=42):
+        """
+        Cluster scaffolds using KMeans with Silhouette Score to determine optimal number of clusters.
+        
+        Parameters:
+        - max_clusters: Maximum number of clusters to try
+        - min_clusters: Minimum number of clusters to try
+        - random_state: Random seed for reproducibility
+        
+        Returns:
+        - cluster_ids: List of cluster assignments for each molecule
+        - optimal_n_clusters: The optimal number of clusters determined by Silhouette Score
+        """
+        from sklearn.metrics import silhouette_score
+        from sklearn.cluster import KMeans
+        
+        print('Extracting scaffolds')
+        scaff_mols = [Chem.MolFromSmiles(scaffold) for scaffold in self.scaff_list]
+        fps = []
+        for mol in scaff_mols:
+            if mol is None:
+                raise ValueError('Invalid Scaffold SMILES. Please check.')
+            try:
+                fp = AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=1024)
+                # Convert fingerprint to numpy array
+                arr = np.zeros((1,))
+                DataStructs.ConvertToNumpyArray(fp, arr)
+                fps.append(arr)
+            except Exception as e:
+                raise ValueError(f'Error generating Morgan fingerprint: {e}')
+        
+        # Store fingerprints for visualization
+        self.fps = np.array(fps)
+        
+        # Determine optimal number of clusters using Silhouette Score
+        print('Finding optimal number of clusters using Silhouette Score...')
+        silhouette_scores = []
+        n_clusters_range = range(min_clusters, max_clusters + 1)
+        
+        for n_clusters in n_clusters_range:
+            kmeans = KMeans(
+                n_clusters=n_clusters,
+                random_state=random_state,
+                n_init=10
+            )
+            cluster_labels = kmeans.fit_predict(self.fps)
+            
+            # Calculate silhouette score
+            score = silhouette_score(self.fps, cluster_labels)
+            silhouette_scores.append(score)
+            print(f'Clusters: {n_clusters}, Silhouette Score: {score:.4f}')
+        
+        # Find the optimal number of clusters (highest silhouette score)
+        optimal_idx = np.argmax(silhouette_scores)
+        optimal_n_clusters = n_clusters_range[optimal_idx]
+        self.optimal_n_clusters = optimal_n_clusters
+        
+        print(f'Optimal number of clusters: {optimal_n_clusters} (Silhouette Score: {silhouette_scores[optimal_idx]:.4f})')
+        
+        # Plot the silhouette scores
+        # plt.figure(figsize=(10, 6))
+        # plt.plot(n_clusters_range, silhouette_scores, 'bo-')
+        # plt.plot(optimal_n_clusters, silhouette_scores[optimal_idx], 'ro', markersize=10, 
+        #          label=f'Optimal: {optimal_n_clusters} (Score: {silhouette_scores[optimal_idx]:.4f})')
+        # plt.xlabel('Number of Clusters')
+        # plt.ylabel('Silhouette Score')
+        # plt.title('Silhouette Score for Different Numbers of Clusters')
+        # plt.legend()
+        # plt.grid(True)
+        # plt.savefig(os.path.join(self.root, f'{self.name}_silhouette_scores.png'))
+        # plt.close()
+        
+        # Perform final clustering with optimal number of clusters
+        print(f'Clustering with optimal number of clusters: {optimal_n_clusters}')
+        kmeans = KMeans(
+            n_clusters=optimal_n_clusters,
+            random_state=random_state,
+            n_init=10  # Increased from 'auto' for better stability
+        )
+        self.cluster_ids = kmeans.fit_predict(self.fps)
+        
+        print(f'Clustered {len(fps)} data into {optimal_n_clusters} clusters.')
+
+        cluster_sizes = np.bincount(self.cluster_ids)
+        print(f'Largest cluster size: {np.max(cluster_sizes)}')
+        print(f'Smallest cluster size: {np.min(cluster_sizes)}')
+        print(f'Average cluster size: {np.mean(cluster_sizes):.2f}')
+        
+        return self.cluster_ids, optimal_n_clusters
+
+    def sabs_sampling(self, N, seed=42):
+        """
+        Scaffold-aware Balanced Sampling (SABS) that considers scaffold clusters for sampling active molecules.
+        
+        Parameters:
+        - N: Number of samples to draw
+        - seed: Random seed for reproducibility
+        
+        Returns:
+        - selected_data: DataFrame containing sampled molecules
+        """
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+        if self.cluster_ids is None:
+            raise ValueError("Must run scaffold_clustering before using sabs_sampling")
+
+        num_molecules = len(self.smiles_list)
+        cluster_ids = np.array(self.cluster_ids)
+        unique_clusters = np.unique(cluster_ids)
+        
+        # Count instances per scaffold cluster
+        N_s = {}
+        for s in unique_clusters:
+            N_s[s] = np.sum(cluster_ids == s)
+            
+        # Calculate scaffold weights (inverse frequency)
+        epsilon = 1e-6
+        w_s = {}
+        for s in unique_clusters:
+            w_s[s] = 1.0 / (N_s[s] + epsilon)
+            
+        # Calculate scaffold probabilities
+        sum_w_s = sum(w_s.values())
+        P_s = {s: w_s[s] / sum_w_s for s in unique_clusters}
+        
+        # Calculate sampling probabilities for each molecule
+        sampling_probs = np.zeros(num_molecules)
+        for idx in range(num_molecules):
+            s = cluster_ids[idx]
+            sampling_probs[idx] = P_s[s]
+            
+        # Normalize probabilities
+        sampling_probs /= np.sum(sampling_probs)
+        
+        # Sample molecules
+        sampled_indices = np.random.choice(num_molecules, size=N, replace=True, p=sampling_probs)
+        
+        selected_smiles = [self.smiles_list[idx] for idx in sampled_indices]
+        selected_scaffolds = [self.scaff_list[idx] for idx in sampled_indices]
+        label_list = [1] * N    
+        selected_data = pd.DataFrame({'smiles': selected_smiles, 'scaffold': selected_scaffolds, 'y': label_list})
+        
+        return selected_data
+    
+    def active_sampling(self, N, seed=42):
+        """
+        Uniformly sample molecules with replacement.
+        
+        Parameters:
+        - N: Number of samples to draw
+        - seed: Random seed for reproducibility
+        
+        Returns:
+        - selected_data: DataFrame containing sampled molecules
+        """
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        
+        num_molecules = len(self.smiles_list)
+        
+        # Uniformly sample molecules with replacement
+        sampled_indices = np.random.choice(num_molecules, size=N, replace=True)
+        
+        selected_smiles = [self.smiles_list[idx] for idx in sampled_indices]
+        selected_scaffolds = [self.scaff_list[idx] for idx in sampled_indices]
+        label_list = [1] * N  # All molecules are active in v2
+        
+        selected_data = pd.DataFrame({
+            'smiles': selected_smiles,
+            'scaffold': selected_scaffolds,
+            'y': label_list
+        })
+        
+        return selected_data
+    
+    

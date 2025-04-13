@@ -26,7 +26,7 @@ def main(cfg: DictConfig):
     print(cfg)
     sampling_method = cfg.augment_data.sampling_method
 
-    if dataset_config["name"] in ['qm9', 'guacamol', 'moses', 'welqrate']:
+    if dataset_config["name"] in ['welqrate']:
         from metrics.molecular_metrics import TrainMolecularMetrics, SamplingMolecularMetrics
         from metrics.molecular_metrics_discrete import TrainMolecularMetricsDiscrete
         from diffusion.extra_features_molecular import ExtraMolecularFeatures
@@ -81,6 +81,7 @@ def main(cfg: DictConfig):
                                               save_top_k=5,
                                               mode='min',
                                               every_n_epochs=1)
+        
         last_ckpt_save = ModelCheckpoint(dirpath=f"checkpoints/{cfg.general.name}", filename='last', every_n_epochs=1)
         callbacks.append(last_ckpt_save)
         callbacks.append(checkpoint_callback)
@@ -108,7 +109,7 @@ def main(cfg: DictConfig):
     ratio = cfg.augment_data.ratio
     print(ratio)
 
-    ### ------------- Augmentation ------------- ###
+    ### ------------- Scaffold Extension Augmentation ------------- ###
     # if generated graphs already exist, terminate the program
     if os.path.exists(f'./generated_graphs/{sampling_method}/{name}_{split_scheme}_{ratio}_generated_graphs.pt'):
         print(f'Generated graphs already exist for {name}_{split_scheme}_{ratio}')
@@ -174,10 +175,10 @@ def main(cfg: DictConfig):
 
         os.makedirs(f'./generated_graphs/{sampling_method}', exist_ok=True)
         torch.save(valid_generated_pyg_graphs, f'./generated_graphs/{sampling_method}/{name}_{split_scheme}_{ratio}_generated_graphs.pt') 
-        # store relaxed valid smiles as csv
+        # store relaxed valid smiles in csv
         relaxed_valid_smiles_df = pd.DataFrame({'smiles': relaxed_valid_smiles}, columns=['smiles'])
         relaxed_valid_smiles_df.to_csv(f'./generated_graphs/{sampling_method}/{name}_{split_scheme}_{ratio}_relaxed_valid_smiles.csv', index=False)
-        # print(generated_graphs[0])
+        
 
 if __name__ == '__main__':
     main()

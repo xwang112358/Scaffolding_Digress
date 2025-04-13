@@ -12,7 +12,7 @@ general:
   resume: null          # If resume, path to ckpt file from outputs directory in main directory
   test_only: null         # Use absolute path
   test_mode: 'augment' # 'augment' | 'reconstruct'
-  ckpt_path: '/home/allenwang/scaffold-aware/Scaffolding_Digress/checkpoints/welqrate-correct-valency-12layer/epoch=291.ckpt'
+  ckpt_path: '/home/allenwang/scaffold-aware/Scaffolding_Digress/checkpoints/welqrate/epoch=291.ckpt'
   check_val_every_n_epochs: 1
   sample_every_val: 4
   val_check_interval: null
